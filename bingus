@@ -1,0 +1,16 @@
+JMP _main
+
+.loop
+ADD R1 R1 R1
+ADD R3 R3 #1
+BLT _loop R1 R2
+JMP _end
+
+.main
+MV R1 #0
+MV R2 #200
+MV R3 #0
+JMP _loop
+
+.end
+
