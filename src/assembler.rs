@@ -146,7 +146,7 @@ impl Assembler {
             .parse::<usize>()
             .expect("Encountered invalid register number while parsing code.");
 
-        if reg_num >= crate::ISA_N_REG {
+        if reg_num >= crate::ARF_SIZE {
             panic!("Encountered out of range register number ({reg_num}) while parsing code.")
         }
 

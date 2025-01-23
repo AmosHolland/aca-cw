@@ -1,9 +1,9 @@
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Program {
     pub instructions: Vec<Instruction>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Instruction {
     Load(RegisterOperand, Operand),
     Store(RegisterOperand, Operand),
@@ -20,25 +20,25 @@ pub enum Instruction {
     Bgt(Operand, Operand, Operand),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Value {
     Int(i32),
     // Float(f32),
     UInt(usize),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Operand {
     Reg(RegisterOperand),
     Imm(ImmediateOperand),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct RegisterOperand {
     pub reg_num: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct ImmediateOperand {
     pub value: Value,
 }

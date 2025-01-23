@@ -1,7 +1,12 @@
+mod alu;
 mod assembler;
+mod cpu;
+mod decoder;
+mod memory;
 mod program;
 
-const ISA_N_REG: usize = 16;
+const ARF_SIZE: usize = 16;
+const PRF_SIZE: usize = 16;
 
 fn main() {
     let mut assembler = assembler::Assembler::new();
