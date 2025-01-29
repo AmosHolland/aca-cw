@@ -5,8 +5,10 @@ pub struct Program {
 
 #[derive(Debug, Clone, Copy)]
 pub enum Instruction {
-    Load(RegisterOperand, Operand),
-    Store(RegisterOperand, Operand),
+    LoadA(RegisterOperand, Operand),
+    StoreA(RegisterOperand, Operand),
+    LoadB(RegisterOperand, Operand, Operand),
+    StoreB(RegisterOperand, Operand, Operand),
     Move(RegisterOperand, Operand),
     Add(RegisterOperand, Operand, Operand),
     Sub(RegisterOperand, Operand, Operand),

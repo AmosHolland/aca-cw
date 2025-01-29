@@ -1,81 +1,131 @@
-use core::panic;
+use crate::program::{ImmediateOperand, Instruction, Operand, Value};
 
-use crate::program::{Instruction, Operand, Value};
-
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum Work {
     Mem(MemWork),
-    Alu(ALUWork),
+    Compute(ComputeWork),
     Branch(BranchWork),
 }
 
-#[derive(Clone, Copy)]
-pub struct MemWork {}
+#[derive(Clone, Copy, Debug)]
+pub struct MemWork {
+    pub operation: MemOp,
+    pub reg: usize,
+    pub index: Operand,
+    pub base: Option<Operand>,
+}
 
-#[derive(Clone, Copy)]
-pub struct ALUWork {
-    pub operation: ALUOp,
-    pub x: i32,
-    pub y: i32,
+#[derive(Clone, Copy, Debug)]
+pub enum MemOp {
+    Load,
+    Store,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ComputeWork {
+    pub operation: ComputeOp,
+    pub x: Operand,
+    pub y: Operand,
     pub dest: usize,
 }
 
-#[derive(Clone, Copy)]
-pub enum ALUOp {
+#[derive(Clone, Copy, Debug)]
+pub enum ComputeOp {
     Add,
     Sub,
     Mul,
 }
 
-#[derive(Clone, Copy)]
-pub struct BranchWork {}
+#[derive(Clone, Copy, Debug)]
+pub struct BranchWork {
+    pub operation: Option<CompareOp>,
+    pub x: Option<Operand>,
+    pub y: Option<Operand>,
+    pub t: Operand,
+}
 
-pub fn decode(instruction: Instruction, arf: &[i32; crate::ARF_SIZE]) -> Work {
+#[derive(Clone, Copy, Debug)]
+pub enum CompareOp {
+    Eq,
+    Lt,
+    Gt,
+}
+
+pub fn decode(instruction: Instruction) -> Work {
     match instruction {
-        Instruction::Load(register_operand, operand) => todo!(),
-        Instruction::Store(register_operand, operand) => todo!(),
-        Instruction::Move(register_operand, operand) => Work::Alu(ALUWork {
-            operation: ALUOp::Add,
-            x: decode_alu_operand(operand, arf),
-            y: 0,
+        Instruction::LoadA(register_operand, operand) => Work::Mem(MemWork {
+            operation: MemOp::Load,
+            reg: register_operand.reg_num,
+            index: operand,
+            base: None,
+        }),
+        Instruction::StoreA(register_operand, operand) => Work::Mem(MemWork {
+            operation: MemOp::Store,
+            reg: register_operand.reg_num,
+            index: operand,
+            base: None,
+        }),
+        Instruction::LoadB(register_operand, operand1, operand2) => Work::Mem(MemWork {
+            operation: MemOp::Load,
+            reg: register_operand.reg_num,
+            index: operand1,
+            base: Some(operand2),
+        }),
+        Instruction::StoreB(register_operand, operand1, operand2) => Work::Mem(MemWork {
+            operation: MemOp::Store,
+            reg: register_operand.reg_num,
+            index: operand1,
+            base: Some(operand2),
+        }),
+        Instruction::Move(register_operand, operand) => Work::Compute(ComputeWork {
+            operation: ComputeOp::Add,
+            x: operand,
+            y: Operand::Imm(ImmediateOperand {
+                value: Value::Int(0),
+            }),
             dest: register_operand.reg_num,
         }),
-        Instruction::Add(register_operand, operand1, operand2) => Work::Alu(ALUWork {
-            operation: ALUOp::Add,
-            x: decode_alu_operand(operand1, arf),
-            y: decode_alu_operand(operand2, arf),
+        Instruction::Add(register_operand, operand1, operand2) => Work::Compute(ComputeWork {
+            operation: ComputeOp::Add,
+            x: operand1,
+            y: operand2,
             dest: register_operand.reg_num,
         }),
-        Instruction::Sub(register_operand, operand1, operand2) => Work::Alu(ALUWork {
-            operation: ALUOp::Sub,
-            x: decode_alu_operand(operand1, arf),
-            y: decode_alu_operand(operand2, arf),
+        Instruction::Sub(register_operand, operand1, operand2) => Work::Compute(ComputeWork {
+            operation: ComputeOp::Sub,
+            x: operand1,
+            y: operand2,
             dest: register_operand.reg_num,
         }),
-        Instruction::Mul(register_operand, operand1, operand2) => Work::Alu(ALUWork {
-            operation: ALUOp::Mul,
-            x: decode_alu_operand(operand1, arf),
-            y: decode_alu_operand(operand2, arf),
+        Instruction::Mul(register_operand, operand1, operand2) => Work::Compute(ComputeWork {
+            operation: ComputeOp::Mul,
+            x: operand1,
+            y: operand2,
             dest: register_operand.reg_num,
         }),
-        Instruction::Jump(operand) => todo!(),
-        Instruction::Beq(operand1, operand2, operand3) => todo!(),
-        Instruction::Blt(operand1, operand2, operand3) => todo!(),
-        Instruction::Bgt(operand1, operand2, operand3) => todo!(),
-    }
-}
-
-fn decode_alu_operand(operand: Operand, arf: &[i32; crate::ARF_SIZE]) -> i32 {
-    if let Value::Int(n) = decode_operand(operand, arf) {
-        return n;
-    }
-
-    panic!("Attempted to do ALU operations on unsigned int.")
-}
-
-fn decode_operand(operand: Operand, arf: &[i32; crate::ARF_SIZE]) -> Value {
-    match operand {
-        Operand::Reg(reg_operand) => Value::Int(arf[reg_operand.reg_num]),
-        Operand::Imm(imm_operand) => imm_operand.value,
+        Instruction::Jump(operand) => Work::Branch(BranchWork {
+            operation: None,
+            x: None,
+            y: None,
+            t: operand,
+        }),
+        Instruction::Beq(operand1, operand2, operand3) => Work::Branch(BranchWork {
+            operation: Some(CompareOp::Eq),
+            x: Some(operand2),
+            y: Some(operand3),
+            t: operand1,
+        }),
+        Instruction::Blt(operand1, operand2, operand3) => Work::Branch(BranchWork {
+            operation: Some(CompareOp::Lt),
+            x: Some(operand2),
+            y: Some(operand3),
+            t: operand1,
+        }),
+        Instruction::Bgt(operand1, operand2, operand3) => Work::Branch(BranchWork {
+            operation: Some(CompareOp::Gt),
+            x: Some(operand2),
+            y: Some(operand3),
+            t: operand1,
+        }),
     }
 }

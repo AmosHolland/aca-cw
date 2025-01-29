@@ -81,13 +81,23 @@ impl Assembler {
         let op_stats = (op, parts.len() - 1);
 
         match op_stats {
-            ("LD", 2) => Some(program::Instruction::Load(
+            ("LDA", 2) => Some(program::Instruction::LoadA(
                 self.parse_reg(parts[1]),
                 self.parse_operand(parts[2]),
             )),
-            ("ST", 2) => Some(program::Instruction::Store(
+            ("STA", 2) => Some(program::Instruction::StoreA(
                 self.parse_reg(parts[1]),
                 self.parse_operand(parts[2]),
+            )),
+            ("LDB", 3) => Some(program::Instruction::LoadB(
+                self.parse_reg(parts[1]),
+                self.parse_operand(parts[2]),
+                self.parse_operand(parts[3]),
+            )),
+            ("STB", 3) => Some(program::Instruction::StoreB(
+                self.parse_reg(parts[1]),
+                self.parse_operand(parts[2]),
+                self.parse_operand(parts[3]),
             )),
             ("MV", 2) => Some(program::Instruction::Move(
                 self.parse_reg(parts[1]),
