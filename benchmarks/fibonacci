@@ -1,0 +1,15 @@
+MV R0 #0
+MV R1 #1
+MV R2 #20
+
+STA R0 #0
+STA R1 #1
+
+MV R3 #2
+
+.loop
+ADD R1 R1 R0
+SUB R0 R1 R0
+STA R1 R3
+ADD R3 R3 #1
+BLT _loop R3 R2

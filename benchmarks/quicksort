@@ -1,0 +1,83 @@
+JMP _main
+
+// Quicksort function
+.qs
+
+// Load parameters from stack
+POP R2 R3
+POP R1 R3
+
+BGT _qs-finish R1 R2
+BEQ _qs-finish R1 R2
+
+// Setup pivot, and iteration indices
+LDA R4 R1
+SUB R5 R1 #1
+ADD R6 R2 #1
+
+// Partition
+.partition-loop
+
+.lower-loop
+ADD R5 R5 #1
+LDA R7 R5
+BLT _lower-loop R7 R4
+
+.upper-loop
+SUB R6 R6 #1
+LDA R8 R6
+BGT _upper-loop R8 R4
+
+.partition-swap
+BGT _qs-recurse R5 R6
+BEQ _qs-recurse R5 R6
+STA R8 R5
+STA R7 R6
+JMP _partition-loop
+
+// Put variables we will need later to the stack for retreival after the first recursive call.
+.qs-recurse
+
+PUSH R6 R3
+PUSH R2 R3
+
+MV R0 _qs-second-recurse
+
+PUSH R0 R3
+PUSH R1 R3
+PUSH R6 R3
+JMP _qs
+
+.qs-second-recurse
+
+POP R2 R3
+POP R6 R3
+ADD R6 R6 #1
+MV R0 _qs-finish
+
+PUSH R0 R3
+PUSH R6 R3
+PUSH R2 R3
+JMP _qs
+
+.qs-finish
+POP R0 R3
+JMP R0
+
+.main
+LDA R1 #0
+LDA R2 #1
+
+MV R3 #2
+MV R0 _end
+ADD R2 R2 R1
+SUB R2 R2 #1
+
+PUSH R0 R3
+PUSH R1 R3
+PUSH R2 R3
+
+JMP _qs
+
+
+.end

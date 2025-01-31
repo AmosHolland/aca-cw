@@ -26,7 +26,6 @@ pub enum Instruction {
 pub enum Value {
     Int(i32),
     // Float(f32),
-    UInt(usize),
 }
 
 #[derive(Debug, Clone, Copy)]

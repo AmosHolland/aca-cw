@@ -1,0 +1,19 @@
+MV R0 #0
+MV R1 #10
+MV R2 #20
+
+MV R3 #10
+MV R4 #0
+
+.loop
+LDB R5 R4 R0
+LDB R6 R4 R1
+
+ADD R5 R5 R6
+STB R5 R4 R2
+ADD R4 R4 #1
+
+BLT _loop R4 R3
+
+
+

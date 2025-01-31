@@ -1,9 +1,9 @@
 use std::{collections::HashMap, fs};
 
-use crate::program::{self};
+use crate::program::{self, ImmediateOperand, Value};
 
 pub struct Assembler {
-    symbol_table: HashMap<String, usize>,
+    symbol_table: HashMap<String, i32>,
     lines: Vec<String>,
 }
 
@@ -49,9 +49,7 @@ impl Assembler {
 
                 self.symbol_table.insert(label.to_owned(), addr_offset);
             }
-            if !line_is_nop(line) {
-                addr_offset += 1;
-            }
+            addr_offset += line_real_instructions(line);
         }
     }
 
@@ -61,8 +59,10 @@ impl Assembler {
             if !line.is_empty() {
                 let result = self.parse_line(line);
 
-                if let Some(instruction) = result {
-                    instructions.push(instruction);
+                if let Some(new_insts) = result {
+                    for inst in new_insts {
+                        instructions.push(inst);
+                    }
                 }
             }
         }
@@ -70,70 +70,94 @@ impl Assembler {
         program::Program { instructions }
     }
 
-    fn parse_line(&self, line: &str) -> Option<program::Instruction> {
+    fn parse_line(&self, line: &str) -> Option<Vec<program::Instruction>> {
         let parts: Vec<&str> = line.split(' ').collect();
         let op = parts[0];
 
-        if op[0..1].eq(".") {
+        if op[0..1].eq(".") || op[0..1].eq("/") {
             return None;
         }
 
         let op_stats = (op, parts.len() - 1);
 
         match op_stats {
-            ("LDA", 2) => Some(program::Instruction::LoadA(
+            ("LDA", 2) => Some(vec![program::Instruction::LoadA(
                 self.parse_reg(parts[1]),
                 self.parse_operand(parts[2]),
-            )),
-            ("STA", 2) => Some(program::Instruction::StoreA(
+            )]),
+            ("STA", 2) => Some(vec![program::Instruction::StoreA(
                 self.parse_reg(parts[1]),
                 self.parse_operand(parts[2]),
-            )),
-            ("LDB", 3) => Some(program::Instruction::LoadB(
-                self.parse_reg(parts[1]),
-                self.parse_operand(parts[2]),
-                self.parse_operand(parts[3]),
-            )),
-            ("STB", 3) => Some(program::Instruction::StoreB(
+            )]),
+            ("LDB", 3) => Some(vec![program::Instruction::LoadB(
                 self.parse_reg(parts[1]),
                 self.parse_operand(parts[2]),
                 self.parse_operand(parts[3]),
-            )),
-            ("MV", 2) => Some(program::Instruction::Move(
-                self.parse_reg(parts[1]),
-                self.parse_operand(parts[2]),
-            )),
-            ("ADD", 3) => Some(program::Instruction::Add(
+            )]),
+            ("STB", 3) => Some(vec![program::Instruction::StoreB(
                 self.parse_reg(parts[1]),
                 self.parse_operand(parts[2]),
                 self.parse_operand(parts[3]),
-            )),
-            ("SUB", 3) => Some(program::Instruction::Sub(
+            )]),
+            ("MV", 2) => Some(vec![program::Instruction::Move(
+                self.parse_reg(parts[1]),
+                self.parse_operand(parts[2]),
+            )]),
+            ("ADD", 3) => Some(vec![program::Instruction::Add(
                 self.parse_reg(parts[1]),
                 self.parse_operand(parts[2]),
                 self.parse_operand(parts[3]),
-            )),
-            ("MUL", 3) => Some(program::Instruction::Mul(
+            )]),
+            ("SUB", 3) => Some(vec![program::Instruction::Sub(
                 self.parse_reg(parts[1]),
                 self.parse_operand(parts[2]),
                 self.parse_operand(parts[3]),
-            )),
-            ("JMP", 1) => Some(program::Instruction::Jump(self.parse_operand(parts[1]))),
-            ("BEQ", 3) => Some(program::Instruction::Beq(
+            )]),
+            ("MUL", 3) => Some(vec![program::Instruction::Mul(
+                self.parse_reg(parts[1]),
+                self.parse_operand(parts[2]),
+                self.parse_operand(parts[3]),
+            )]),
+            ("JMP", 1) => Some(vec![program::Instruction::Jump(
+                self.parse_operand(parts[1]),
+            )]),
+            ("BEQ", 3) => Some(vec![program::Instruction::Beq(
                 self.parse_operand(parts[1]),
                 self.parse_operand(parts[2]),
                 self.parse_operand(parts[3]),
-            )),
-            ("BLT", 3) => Some(program::Instruction::Blt(
+            )]),
+            ("BLT", 3) => Some(vec![program::Instruction::Blt(
                 self.parse_operand(parts[1]),
                 self.parse_operand(parts[2]),
                 self.parse_operand(parts[3]),
-            )),
-            ("BGT", 3) => Some(program::Instruction::Bgt(
+            )]),
+            ("BGT", 3) => Some(vec![program::Instruction::Bgt(
                 self.parse_operand(parts[1]),
                 self.parse_operand(parts[2]),
                 self.parse_operand(parts[3]),
-            )),
+            )]),
+            ("PUSH", 2) => {
+                let value = self.parse_reg(parts[1]);
+                let target = self.parse_reg(parts[2]);
+                let immediate_1 = program::Operand::Imm(ImmediateOperand {
+                    value: Value::Int(1),
+                });
+                Some(vec![
+                    program::Instruction::Add(target, program::Operand::Reg(target), immediate_1),
+                    program::Instruction::StoreA(value, program::Operand::Reg(target)),
+                ])
+            }
+            ("POP", 2) => {
+                let value = self.parse_reg(parts[1]);
+                let target = self.parse_reg(parts[2]);
+                let immediate_1 = program::Operand::Imm(ImmediateOperand {
+                    value: Value::Int(1),
+                });
+                Some(vec![
+                    program::Instruction::LoadA(value, program::Operand::Reg(target)),
+                    program::Instruction::Sub(target, program::Operand::Reg(target), immediate_1),
+                ])
+            }
             _ => panic!("Encountered a malformed instruction ({line}) while parsing code."),
         }
     }
@@ -177,11 +201,21 @@ impl Assembler {
             panic!("Encountered undefined label {label} while parsing code.");
         }
 
-        let value = program::Value::UInt(self.symbol_table[label]);
+        let value = program::Value::Int(self.symbol_table[label]);
         program::ImmediateOperand { value }
     }
 }
 
-fn line_is_nop(line: &str) -> bool {
-    line.is_empty() || line[0..1].eq(".")
+fn line_real_instructions(line: &str) -> i32 {
+    if line.is_empty() || line[0..1].eq(".") || line[0..1].eq("/") {
+        0
+    } else {
+        let parts: Vec<&str> = line.split(' ').collect();
+        let op = parts[0];
+        match op {
+            "PUSH" => 2,
+            "POP" => 2,
+            _ => 1,
+        }
+    }
 }

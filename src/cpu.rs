@@ -3,7 +3,7 @@ use std::usize;
 use text_io::read;
 
 use crate::alu::{alu_compare, alu_compute};
-use crate::decoder::{decode, BranchWork, ComputeWork, MemOp, MemWork, Work};
+use crate::decoder::{decode, BranchJob, ComputeJob, Job, MemJob, MemOp, Work};
 use crate::memory::Memory;
 use crate::program::{Instruction, Operand, Program, Value};
 use crate::{ARF_SIZE, PRF_SIZE};
@@ -12,7 +12,7 @@ pub struct Cpu {
     arf: [i32; ARF_SIZE],
     prf: [i32; PRF_SIZE],
     pc: usize,
-    memory: Memory,
+    pub memory: Memory,
     debug: bool,
 }
 
@@ -70,11 +70,20 @@ impl Cpu {
         };
 
         while self.pc < program_length {
-            if self.debug {
+            if self.debug && curr_pipeline.decode.is_some() {
                 println!("Pipeline before cycle {0}:", cycles + 1);
                 println!("{curr_pipeline}\n");
                 println!("PC Value: {0}\n", self.pc);
                 self.display_reg_state();
+                println!();
+                for i in 1000..1010 {
+                    println!("Memory Location {i}: {0}", self.memory.load(i));
+                }
+
+                println!();
+                for i in 0..20 {
+                    println!("Memory Location {i}: {0}", self.memory.load(i));
+                }
                 println!();
                 let _: String = read!();
             }
@@ -84,10 +93,6 @@ impl Cpu {
 
         println!("Program run in {cycles} cycles.");
         self.display_reg_state();
-
-        for i in 399..411 {
-            println!("Memory Location {i}: {0}", self.memory.load(i));
-        }
     }
     fn run_cycle(&mut self, start_pipeline: Pipeline) -> Pipeline {
         let mut next_pipeline = Pipeline::default();
@@ -99,21 +104,28 @@ impl Cpu {
             next_pipeline.execute = Some(decode(instr))
         }
         if let Some(work) = start_pipeline.execute {
-            next_pipeline.writeback = match work {
-                Work::Mem(mem_work) => {
-                    let wb = self.handle_mem_work(mem_work);
-                    if wb.is_none() {
-                        self.pc += 1;
-                        next_pipeline.fetch = Some(self.pc);
+            if work.cycles == 1 {
+                next_pipeline.writeback = match work.job {
+                    Job::Mem(mem_work) => {
+                        let wb = self.handle_mem_work(mem_work);
+                        if wb.is_none() {
+                            self.pc += 1;
+                            next_pipeline.fetch = Some(self.pc);
+                        }
+                        wb
                     }
-                    wb
+                    Job::Compute(comp_work) => self.handle_compute_work(comp_work),
+                    Job::Branch(branch_work) => {
+                        self.handle_branch_work(branch_work);
+                        next_pipeline.fetch = Some(self.pc);
+                        None
+                    }
                 }
-                Work::Compute(comp_work) => self.handle_compute_work(comp_work),
-                Work::Branch(branch_work) => {
-                    self.handle_branch_work(branch_work);
-                    next_pipeline.fetch = Some(self.pc);
-                    None
-                }
+            } else {
+                next_pipeline.execute = Some(Work {
+                    cycles: work.cycles - 1,
+                    job: work.job,
+                })
             }
         }
 
@@ -126,21 +138,25 @@ impl Cpu {
         next_pipeline
     }
 
-    fn handle_compute_work(&self, work: ComputeWork) -> Option<Writeback> {
+    fn handle_compute_work(&self, work: ComputeJob) -> Option<Writeback> {
         let x = self.evaluate_compute_operand(work.x);
         let y = self.evaluate_compute_operand(work.y);
 
         Some((work.dest, alu_compute(work.operation, x, y)))
     }
 
-    fn handle_branch_work(&mut self, work: BranchWork) {
-        let x = self.evaluate_compute_operand(work.x.expect("Conditional branch without operands"));
-        let y = self.evaluate_compute_operand(work.y.expect("Conditional branch without operands"));
+    fn handle_branch_work(&mut self, work: BranchJob) {
         let t = self.evaluate_address_operand(work.t);
 
         let branch = match work.operation {
             None => true,
-            Some(op) => alu_compare(op, x, y),
+            Some(op) => {
+                let x = self
+                    .evaluate_compute_operand(work.x.expect("Conditional branch without operands"));
+                let y = self
+                    .evaluate_compute_operand(work.y.expect("Conditional branch without operands"));
+                alu_compare(op, x, y)
+            }
         };
 
         if branch {
@@ -150,7 +166,7 @@ impl Cpu {
         }
     }
 
-    fn handle_mem_work(&mut self, work: MemWork) -> Option<Writeback> {
+    fn handle_mem_work(&mut self, work: MemJob) -> Option<Writeback> {
         let base = match work.base {
             Some(opr) => self.evaluate_address_operand(opr),
             None => 0,
@@ -187,10 +203,11 @@ impl Cpu {
 
     fn evaluate_address_operand(&self, opr: Operand) -> usize {
         match opr {
-            Operand::Reg(reg_opr) => self.arf[reg_opr.reg_num].try_into().unwrap(),
+            Operand::Reg(reg_opr) => self.arf[reg_opr.reg_num]
+                .try_into()
+                .expect("Invalid int given as address"),
             Operand::Imm(imm_opr) => match imm_opr.value {
                 Value::Int(i) => i.try_into().expect("Invalid int given as address"),
-                Value::UInt(i) => i,
             },
         }
     }
