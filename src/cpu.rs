@@ -23,8 +23,8 @@ pub type Writeback = (usize, i32);
 struct Pipeline {
     fetch: Option<Address>,
     decode: Option<Instruction>,
-    execute: Option<Work>,
-    writeback: Option<Writeback>,
+    execute: Option<(Work, Instruction)>,
+    writeback: Option<(Writeback, Instruction)>,
 }
 
 impl std::fmt::Display for Pipeline {
@@ -96,56 +96,79 @@ impl Cpu {
     }
     fn run_cycle(&mut self, start_pipeline: Pipeline) -> Pipeline {
         let mut next_pipeline = Pipeline::default();
+        let mut jumped = false;
 
-        if let Some(addr) = start_pipeline.fetch {
-            next_pipeline.decode = Some(self.memory.fetch(addr));
-        }
-        if let Some(instr) = start_pipeline.decode {
-            next_pipeline.execute = Some(decode(instr))
-        }
-        if let Some(work) = start_pipeline.execute {
+        if let Some((work, inst)) = start_pipeline.execute {
             if work.cycles == 1 {
                 next_pipeline.writeback = match work.job {
                     Job::Mem(mem_work) => {
-                        let wb = self.handle_mem_work(mem_work);
-                        if wb.is_none() {
-                            self.pc += 1;
-                            next_pipeline.fetch = Some(self.pc);
-                        }
-                        wb
+                        let wb_opt = self.handle_mem_work(mem_work);
+                        wb_opt.map(|wb| (wb, inst))
                     }
-                    Job::Compute(comp_work) => self.handle_compute_work(comp_work),
+                    Job::Compute(comp_work) => Some((self.handle_compute_work(comp_work), inst)),
                     Job::Branch(branch_work) => {
-                        self.handle_branch_work(branch_work);
-                        next_pipeline.fetch = Some(self.pc);
+                        jumped = self.handle_branch_work(branch_work);
                         None
                     }
                 }
             } else {
-                next_pipeline.execute = Some(Work {
-                    cycles: work.cycles - 1,
-                    job: work.job,
-                })
+                next_pipeline.execute = Some((
+                    Work {
+                        cycles: work.cycles - 1,
+                        job: work.job,
+                    },
+                    inst,
+                ))
             }
         }
 
-        if let Some((reg, value)) = start_pipeline.writeback {
+        if let Some(instr) = start_pipeline.decode {
+            if next_pipeline.execute.is_some() {
+                next_pipeline.decode = Some(instr)
+            } else if let Some((_, instr1)) = next_pipeline.writeback {
+                if instr1.blocks(&instr) {
+                    next_pipeline.decode = Some(instr)
+                } else {
+                    next_pipeline.execute = Some((decode(instr), instr))
+                }
+            } else {
+                next_pipeline.execute = Some((decode(instr), instr))
+            }
+        }
+
+        if let Some(addr) = start_pipeline.fetch {
+            if next_pipeline.decode.is_some() {
+                next_pipeline.fetch = Some(addr);
+            } else if !jumped {
+                next_pipeline.decode = Some(self.memory.fetch(self.pc));
+                self.pc += 1;
+                next_pipeline.fetch = Some(self.pc);
+            }
+        }
+
+        if let Some(((reg, value), _)) = start_pipeline.writeback {
             self.arf[reg] = value;
-            self.pc += 1;
-            next_pipeline.fetch = Some(self.pc);
         };
+
+        if jumped {
+            next_pipeline = Pipeline {
+                fetch: Some(self.pc),
+                decode: None,
+                execute: None,
+                writeback: None,
+            }
+        }
 
         next_pipeline
     }
 
-    fn handle_compute_work(&self, work: ComputeJob) -> Option<Writeback> {
+    fn handle_compute_work(&self, work: ComputeJob) -> Writeback {
         let x = self.evaluate_compute_operand(work.x);
         let y = self.evaluate_compute_operand(work.y);
-
-        Some((work.dest, alu_compute(work.operation, x, y)))
+        (work.dest, alu_compute(work.operation, x, y))
     }
 
-    fn handle_branch_work(&mut self, work: BranchJob) {
+    fn handle_branch_work(&mut self, work: BranchJob) -> bool {
         let t = self.evaluate_address_operand(work.t);
 
         let branch = match work.operation {
@@ -161,9 +184,9 @@ impl Cpu {
 
         if branch {
             self.pc = t;
-        } else {
-            self.pc += 1;
-        }
+        };
+
+        branch
     }
 
     fn handle_mem_work(&mut self, work: MemJob) -> Option<Writeback> {
