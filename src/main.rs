@@ -11,7 +11,7 @@ const ARF_SIZE: usize = 16;
 const PRF_SIZE: usize = 16;
 
 fn main() {
-    test_quicksort(false);
+    test_fib(true);
 }
 
 fn test_vec_add(debug: bool) {

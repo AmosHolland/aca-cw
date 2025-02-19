@@ -38,15 +38,33 @@ impl Pipeline {
 
 impl std::fmt::Display for Pipeline {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let fetch_text = if let Some(pc) = self.fetch {
+            format!("instruction {pc}")
+        } else {
+            "None".to_string()
+        };
+
+        let decode_text = if let Some(inst) = self.decode {
+            format!("{inst}")
+        } else {
+            "None".to_string()
+        };
+
+        let execute_text = if let Some((work, inst)) = self.execute {
+            format!("{inst}, {0} cycle(s) left", work.cycles)
+        } else {
+            "None".to_string()
+        };
+
+        let wb_text = if let Some(((reg, val), inst)) = self.writeback {
+            format!("{val} to {reg}, result of {inst}")
+        } else {
+            "None".to_string()
+        };
+
         write!(
             f,
-            "
-        To fetch     : {0:?}\n
-        To decode    : {1:?}\n
-        To execute   : {2:?}\n
-        To writeback : {3:?}\n
-        ",
-            self.fetch, self.decode, self.execute, self.writeback
+            "Fetch     : {fetch_text}\nDecode    : {decode_text}\nExecute   : {execute_text}\nWriteback : {wb_text}\n",
         )
     }
 }

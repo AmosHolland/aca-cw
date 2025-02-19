@@ -1,3 +1,5 @@
+use std::{fmt::write, path::Display};
+
 #[derive(Debug, Clone)]
 pub struct Program {
     pub instructions: Vec<Instruction>,
@@ -77,6 +79,25 @@ impl Instruction {
     }
 }
 
+impl std::fmt::Display for Instruction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Instruction::LoadA(reg_opr, opr) => write!(f, "LDA {reg_opr} {opr}"),
+            Instruction::StoreA(reg_opr, opr) => write!(f, "STA {reg_opr} {opr}"),
+            Instruction::LoadB(reg_opr, opr, opr1) => write!(f, "LDB {reg_opr} {opr} {opr1}"),
+            Instruction::StoreB(reg_opr, opr, opr1) => write!(f, "STB {reg_opr} {opr}, {opr1}"),
+            Instruction::Move(reg_opr, opr) => write!(f, "MV {reg_opr} {opr}"),
+            Instruction::Add(reg_opr, opr, opr1) => write!(f, "ADD {reg_opr} {opr}, {opr1}"),
+            Instruction::Sub(reg_opr, opr, opr1) => write!(f, "SUB {reg_opr} {opr}, {opr1}"),
+            Instruction::Mul(reg_opr, opr, opr1) => write!(f, "MUL {reg_opr} {opr}, {opr1}"),
+            Instruction::Jump(opr) => write!(f, "JMP {opr}"),
+            Instruction::Beq(opr, opr1, opr2) => write!(f, "BEQ {opr} {opr1} {opr2}"),
+            Instruction::Blt(opr, opr1, opr2) => write!(f, "BLT {opr} {opr1} {opr2}"),
+            Instruction::Bgt(opr, opr1, opr2) => write!(f, "BGT {opr} {opr1} {opr2}"),
+        }
+    }
+}
+
 fn find_reg_operands(oprs: Vec<Operand>) -> Option<Vec<usize>> {
     let mut regs = Vec::new();
     for opr in oprs {
@@ -98,10 +119,27 @@ pub enum Value {
     // Float(f32),
 }
 
+impl std::fmt::Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Int(i) => write!(f, "{i}"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum Operand {
     Reg(RegisterOperand),
     Imm(ImmediateOperand),
+}
+
+impl std::fmt::Display for Operand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Operand::Reg(reg_opr) => write!(f, "{reg_opr}"),
+            Operand::Imm(imm_opr) => write!(f, "{imm_opr}"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -109,7 +147,19 @@ pub struct RegisterOperand {
     pub reg_num: usize,
 }
 
+impl std::fmt::Display for RegisterOperand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "R{0}", self.reg_num)
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ImmediateOperand {
     pub value: Value,
+}
+
+impl std::fmt::Display for ImmediateOperand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "#{0}", self.value)
+    }
 }
