@@ -1,4 +1,4 @@
-use crate::program::{Instruction, Program};
+use crate::program::{self, Instruction, Program};
 
 const MEM_SIZE: usize = 4096;
 pub struct Memory {
@@ -30,8 +30,8 @@ impl Memory {
         self.program = program.clone();
     }
 
-    pub fn fetch(&self, pc: usize) -> Instruction {
-        self.program.instructions[pc]
+    pub fn fetch(&self, pc: usize) -> Option<Instruction> {
+        self.program.instructions.get(pc).copied()
     }
 
     pub fn store(&mut self, address: usize, value: i32) {

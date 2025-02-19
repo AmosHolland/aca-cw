@@ -27,6 +27,15 @@ struct Pipeline {
     writeback: Option<(Writeback, Instruction)>,
 }
 
+impl Pipeline {
+    fn is_empty(&self) -> bool {
+        self.fetch.is_none()
+            && self.decode.is_none()
+            && self.execute.is_none()
+            && self.writeback.is_none()
+    }
+}
+
 impl std::fmt::Display for Pipeline {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -57,7 +66,6 @@ impl Cpu {
         self.arf = [0; ARF_SIZE];
         self.prf = [0; PRF_SIZE];
 
-        let program_length = program.instructions.len();
         self.memory.load_program(program);
 
         let mut cycles = 0;
@@ -69,22 +77,12 @@ impl Cpu {
             writeback: None,
         };
 
-        while self.pc < program_length {
-            if self.debug && curr_pipeline.decode.is_some() {
+        while !curr_pipeline.is_empty() {
+            if self.debug {
                 println!("Pipeline before cycle {0}:", cycles + 1);
                 println!("{curr_pipeline}\n");
                 println!("PC Value: {0}\n", self.pc);
                 self.display_reg_state();
-                println!();
-                for i in 1000..1010 {
-                    println!("Memory Location {i}: {0}", self.memory.load(i));
-                }
-
-                println!();
-                for i in 0..20 {
-                    println!("Memory Location {i}: {0}", self.memory.load(i));
-                }
-                println!();
                 let _: String = read!();
             }
             curr_pipeline = self.run_cycle(curr_pipeline);
@@ -140,9 +138,11 @@ impl Cpu {
             if next_pipeline.decode.is_some() {
                 next_pipeline.fetch = Some(addr);
             } else if !jumped {
-                next_pipeline.decode = Some(self.memory.fetch(self.pc));
-                self.pc += 1;
-                next_pipeline.fetch = Some(self.pc);
+                next_pipeline.decode = self.memory.fetch(self.pc);
+                if next_pipeline.decode.is_some() {
+                    self.pc += 1;
+                    next_pipeline.fetch = Some(self.pc);
+                }
             }
         }
 
