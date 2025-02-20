@@ -1,6 +1,6 @@
-use crate::program::{self, Instruction, Program};
+use crate::program::{Instruction, Program};
 
-const MEM_SIZE: usize = 4096;
+pub const MEM_SIZE: usize = 4096;
 pub struct Memory {
     data: [i32; MEM_SIZE],
     program: Program,
@@ -42,7 +42,7 @@ impl Memory {
         self.data[address] = value;
     }
 
-    pub fn load(&mut self, address: usize) -> i32 {
+    pub fn load(&self, address: usize) -> i32 {
         if address >= self.data.len() {
             panic!("Attempted to load from address {address} which is outside of memory.")
         }

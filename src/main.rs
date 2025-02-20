@@ -1,8 +1,10 @@
+use debug::PreRuntimeCommand;
 use rand::seq::SliceRandom;
 
 mod alu;
 mod assembler;
 mod cpu;
+mod debug;
 mod decoder;
 mod memory;
 mod program;
@@ -11,7 +13,42 @@ const ARF_SIZE: usize = 16;
 const PRF_SIZE: usize = 16;
 
 fn main() {
-    test_fib(true);
+    run_repl();
+}
+
+fn run_repl() {
+    let mut rl = rustyline::DefaultEditor::new().expect("");
+    if rl.load_history("repl_history.txt").is_err() {
+        println!("No previous history.");
+    }
+
+    loop {
+        let readline = rl.readline("> ");
+        match readline {
+            Ok(line) => {
+                let _ = rl.add_history_entry(line.as_str());
+
+                let parsed_line = debug::parse_pre_runtime_command_string(line);
+                let Ok(command) = parsed_line else {
+                    println!("Invalid command.");
+                    continue;
+                };
+
+                let (program, debug) = match command {
+                    PreRuntimeCommand::Run(s) => (s, false),
+                    PreRuntimeCommand::Debug(s) => (s, true),
+                };
+
+                match program {
+                    _ if program == *"vector_add" => test_vec_add(debug),
+                    _ if program == *"fibonacci" => test_fib(debug),
+                    _ if program == *"quicksort" => test_quicksort(debug),
+                    _ => println!("Unknown program: {program}"),
+                }
+            }
+            _ => break,
+        }
+    }
 }
 
 fn test_vec_add(debug: bool) {

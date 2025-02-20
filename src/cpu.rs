@@ -1,12 +1,9 @@
-use std::usize;
-
-use text_io::read;
-
 use crate::alu::{alu_compare, alu_compute};
+use crate::debug::RuntimeCommand;
 use crate::decoder::{decode, BranchJob, ComputeJob, Job, MemJob, MemOp, Work};
 use crate::memory::Memory;
 use crate::program::{Instruction, Operand, Program, Value};
-use crate::{ARF_SIZE, PRF_SIZE};
+use crate::{debug, ARF_SIZE, PRF_SIZE};
 
 pub struct Cpu {
     arf: [i32; ARF_SIZE],
@@ -14,12 +11,13 @@ pub struct Cpu {
     pc: usize,
     pub memory: Memory,
     debug: bool,
+    pipeline: Pipeline,
 }
 
 pub type Address = usize;
 pub type Writeback = (usize, i32);
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 struct Pipeline {
     fetch: Option<Address>,
     decode: Option<Instruction>,
@@ -77,6 +75,47 @@ impl Cpu {
             pc: 0,
             memory: Memory::new(),
             debug,
+            pipeline: Pipeline::default(),
+        }
+    }
+
+    fn debug_repl(&self) {
+        let mut rl = rustyline::DefaultEditor::new().expect("");
+        if rl.load_history("runtime_history.txt").is_err() {
+            println!("No previous history.");
+        }
+
+        loop {
+            let readline = rl.readline(">> ");
+            match readline {
+                Ok(line) => {
+                    let _ = rl.add_history_entry(line.as_str());
+                    let parsed_line = debug::parse_runtime_command_string(line);
+
+                    match parsed_line {
+                        Err(err) => println!("Invalid command: {err}"),
+                        Ok(command) => {
+                            self.debug_command_output(command);
+                            if let RuntimeCommand::Step = command {
+                                break;
+                            }
+                        }
+                    }
+                }
+                _ => panic!("Program halted prematurely."),
+            }
+        }
+        let _ = rl.save_history("history.txt");
+    }
+
+    fn debug_command_output(&self, command: RuntimeCommand) {
+        match command {
+            RuntimeCommand::ShowRegisters => self.display_reg_state(),
+            RuntimeCommand::ShowRegister(n) => println!("R{n} : {0}", self.arf[n]),
+            RuntimeCommand::ShowMemory((n1, n2)) => self.display_memory(n1, n2),
+            RuntimeCommand::ShowPipeline => println!("Current pipeline: \n{0}", self.pipeline),
+            RuntimeCommand::ShowPC => println!("PC : {0}", self.pc),
+            _ => (),
         }
     }
 
@@ -88,29 +127,31 @@ impl Cpu {
 
         let mut cycles = 0;
 
-        let mut curr_pipeline = Pipeline {
+        self.pipeline = Pipeline {
             fetch: Some(0),
             decode: None,
             execute: None,
             writeback: None,
         };
 
-        while !curr_pipeline.is_empty() {
+        while !self.pipeline.is_empty() {
             if self.debug {
                 println!("Pipeline before cycle {0}:", cycles + 1);
-                println!("{curr_pipeline}\n");
+                println!("{0}", self.pipeline);
                 println!("PC Value: {0}\n", self.pc);
                 self.display_reg_state();
-                let _: String = read!();
+                self.debug_repl();
             }
-            curr_pipeline = self.run_cycle(curr_pipeline);
+            self.pipeline = self.run_cycle();
             cycles += 1;
         }
 
         println!("Program run in {cycles} cycles.");
         self.display_reg_state();
     }
-    fn run_cycle(&mut self, start_pipeline: Pipeline) -> Pipeline {
+
+    fn run_cycle(&mut self) -> Pipeline {
+        let start_pipeline = self.pipeline;
         let mut next_pipeline = Pipeline::default();
         let mut jumped = false;
 
@@ -233,11 +274,8 @@ impl Cpu {
         match opr {
             Operand::Reg(reg_opr) => self.arf[reg_opr.reg_num],
             Operand::Imm(imm_opr) => {
-                if let Value::Int(i) = imm_opr.value {
-                    i
-                } else {
-                    panic!("attempted to do compute on a usize")
-                }
+                let Value::Int(i) = imm_opr.value;
+                i
             }
         }
     }
@@ -254,9 +292,14 @@ impl Cpu {
     }
 
     fn display_reg_state(&self) {
-        println!("Register values:");
         for (i, r) in self.arf.iter().enumerate() {
-            println!("Register {i}: {r}");
+            println!("R{i}: {r}");
+        }
+    }
+
+    fn display_memory(&self, start: usize, end: usize) {
+        for i in start..end {
+            println!("M[{i}] : {0}", self.memory.load(i));
         }
     }
 }

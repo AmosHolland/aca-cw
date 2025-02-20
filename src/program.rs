@@ -1,10 +1,9 @@
-use std::{fmt::write, path::Display};
-
 #[derive(Debug, Clone)]
 pub struct Program {
     pub instructions: Vec<Instruction>,
 }
 
+// TODO add div instruction
 #[derive(Debug, Clone, Copy)]
 pub enum Instruction {
     LoadA(RegisterOperand, Operand),
@@ -15,9 +14,6 @@ pub enum Instruction {
     Add(RegisterOperand, Operand, Operand),
     Sub(RegisterOperand, Operand, Operand),
     Mul(RegisterOperand, Operand, Operand),
-    // FAdd(Register, Operand, Operand),
-    // FSub(Register, Operand, Operand),
-    // FMul(Register, Operand, Operand),
     Jump(Operand),
     Beq(Operand, Operand, Operand),
     Blt(Operand, Operand, Operand),
@@ -116,7 +112,6 @@ fn find_reg_operands(oprs: Vec<Operand>) -> Option<Vec<usize>> {
 #[derive(Debug, Clone, Copy)]
 pub enum Value {
     Int(i32),
-    // Float(f32),
 }
 
 impl std::fmt::Display for Value {
