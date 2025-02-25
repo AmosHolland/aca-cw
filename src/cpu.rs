@@ -1,3 +1,5 @@
+use std::mem;
+
 use crate::alu::{alu_compare, alu_compute};
 use crate::debug::RuntimeCommand;
 use crate::decoder::{decode, BranchJob, ComputeJob, Job, MemJob, MemOp, Work};
@@ -17,20 +19,42 @@ pub struct Cpu {
 pub type Address = usize;
 pub type Writeback = (usize, i32);
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone)]
 struct Pipeline {
     fetch: Option<Address>,
     decode: Option<Instruction>,
-    execute: Option<(Work, Instruction)>,
-    writeback: Option<(Writeback, Instruction)>,
+    alu_execute: Option<((usize, ComputeJob), Instruction)>,
+    mem_execute: Option<((usize, MemJob), Instruction)>,
+    jmp_execute: Option<((usize, BranchJob), Instruction)>,
+    writeback: Vec<(Writeback, Instruction)>,
 }
 
 impl Pipeline {
     fn is_empty(&self) -> bool {
         self.fetch.is_none()
             && self.decode.is_none()
-            && self.execute.is_none()
-            && self.writeback.is_none()
+            && self.writeback.is_empty()
+            && self.alu_execute.is_none()
+            && self.mem_execute.is_none()
+            && self.jmp_execute.is_none()
+    }
+
+    fn blocks(&self, inst: Instruction) -> bool {
+        let mut blocks = false;
+
+        if let Some((_, _)) = self.jmp_execute {
+            blocks = true;
+        }
+        for (_, wb) in self.writeback.iter() {
+            blocks = blocks || wb.blocks(&inst);
+        }
+        if let Some((_, alu_inst)) = self.mem_execute {
+            blocks = blocks || alu_inst.blocks(&inst) || inst.blocks(&alu_inst);
+        }
+        if let Some((_, mem_inst)) = self.alu_execute {
+            blocks = blocks || mem_inst.blocks(&inst) || inst.blocks(&mem_inst);
+        }
+        blocks
     }
 }
 
@@ -48,21 +72,37 @@ impl std::fmt::Display for Pipeline {
             "None".to_string()
         };
 
-        let execute_text = if let Some((work, inst)) = self.execute {
-            format!("{inst}, {0} cycle(s) left", work.cycles)
+        let alu_execute_text = if let Some(((cycles, _), inst)) = self.alu_execute {
+            format!("{inst}, {cycles} cycle(s) left")
         } else {
             "None".to_string()
         };
 
-        let wb_text = if let Some(((reg, val), inst)) = self.writeback {
-            format!("{val} to {reg}, result of {inst}")
+        let mem_execute_text = if let Some(((cycles, _), inst)) = self.mem_execute {
+            format!("{inst}, {cycles} cycle(s) left")
         } else {
             "None".to_string()
+        };
+
+        let jmp_execute_text = if let Some(((cycles, _), inst)) = self.jmp_execute {
+            format!("{inst}, {cycles} cycle(s) left")
+        } else {
+            "None".to_string()
+        };
+
+        let wb_text = if self.writeback.is_empty() {
+            "None".to_string()
+        } else {
+            let mut wbs = "".to_string();
+            for ((reg, val), inst) in self.writeback.iter() {
+                wbs = format!("{wbs}{val} to {reg}, result of {inst}\n");
+            }
+            wbs
         };
 
         write!(
             f,
-            "Fetch     : {fetch_text}\nDecode    : {decode_text}\nExecute   : {execute_text}\nWriteback : {wb_text}\n",
+            "Fetch     : {fetch_text}\nDecode    : {decode_text}\nALU       : {alu_execute_text}\nMEM       : {mem_execute_text}\nJMP       : {jmp_execute_text}\nWriteback : {wb_text}\n",
         )
     }
 }
@@ -130,8 +170,10 @@ impl Cpu {
         self.pipeline = Pipeline {
             fetch: Some(0),
             decode: None,
-            execute: None,
-            writeback: None,
+            alu_execute: None,
+            mem_execute: None,
+            jmp_execute: None,
+            writeback: Vec::new(),
         };
 
         while !self.pipeline.is_empty() {
@@ -151,46 +193,41 @@ impl Cpu {
     }
 
     fn run_cycle(&mut self) -> Pipeline {
-        let start_pipeline = self.pipeline;
+        let start_pipeline = self.pipeline.clone();
         let mut next_pipeline = Pipeline::default();
         let mut jumped = false;
 
-        if let Some((work, inst)) = start_pipeline.execute {
-            if work.cycles == 1 {
-                next_pipeline.writeback = match work.job {
-                    Job::Mem(mem_work) => {
-                        let wb_opt = self.handle_mem_work(mem_work);
-                        wb_opt.map(|wb| (wb, inst))
-                    }
-                    Job::Compute(comp_work) => Some((self.handle_compute_work(comp_work), inst)),
-                    Job::Branch(branch_work) => {
-                        jumped = self.handle_branch_work(branch_work);
-                        None
-                    }
-                }
+        if let Some(((cycles, job), inst)) = start_pipeline.alu_execute {
+            if cycles == 1 {
+                next_pipeline
+                    .writeback
+                    .push((self.handle_compute_work(job), inst));
             } else {
-                next_pipeline.execute = Some((
-                    Work {
-                        cycles: work.cycles - 1,
-                        job: work.job,
-                    },
-                    inst,
-                ))
+                next_pipeline.alu_execute = Some(((cycles - 1, job), inst))
             }
         }
 
-        if let Some(instr) = start_pipeline.decode {
-            if next_pipeline.execute.is_some() {
-                next_pipeline.decode = Some(instr)
-            } else if let Some((_, instr1)) = next_pipeline.writeback {
-                if instr1.blocks(&instr) {
-                    next_pipeline.decode = Some(instr)
-                } else {
-                    next_pipeline.execute = Some((decode(instr), instr))
+        if let Some(((cycles, job), inst)) = start_pipeline.mem_execute {
+            if cycles == 1 {
+                let wb_opt = self.handle_mem_work(job);
+                if let Some(wb) = wb_opt {
+                    next_pipeline.writeback.push((wb, inst));
                 }
             } else {
-                next_pipeline.execute = Some((decode(instr), instr))
+                next_pipeline.mem_execute = Some(((cycles - 1, job), inst))
             }
+        }
+
+        if let Some(((cycles, job), inst)) = start_pipeline.jmp_execute {
+            if cycles == 1 {
+                jumped = self.handle_branch_work(job);
+            } else {
+                next_pipeline.jmp_execute = Some(((cycles - 1, job), inst))
+            }
+        }
+
+        if let Some(inst) = start_pipeline.decode {
+            next_pipeline = self.handle_decode(inst, next_pipeline.clone());
         }
 
         if let Some(addr) = start_pipeline.fetch {
@@ -205,18 +242,46 @@ impl Cpu {
             }
         }
 
-        if let Some(((reg, value), _)) = start_pipeline.writeback {
+        for ((reg, value), _) in start_pipeline.writeback {
             self.arf[reg] = value;
-        };
+        }
 
         if jumped {
             next_pipeline = Pipeline {
                 fetch: Some(self.pc),
                 decode: None,
-                execute: None,
-                writeback: None,
+                alu_execute: None,
+                mem_execute: None,
+                jmp_execute: None,
+                writeback: Vec::new(),
             }
         }
+
+        next_pipeline
+    }
+
+    fn handle_decode(&self, inst: Instruction, mut next_pipeline: Pipeline) -> Pipeline {
+        let work = decode(inst);
+        let can_prop = match work.job {
+            Job::Mem(_) => next_pipeline.mem_execute.is_none(),
+            Job::Compute(_) => next_pipeline.alu_execute.is_none(),
+            Job::Branch(_) => {
+                next_pipeline.jmp_execute.is_none()
+                    && next_pipeline.alu_execute.is_none()
+                    && next_pipeline.mem_execute.is_none()
+            }
+        };
+
+        if !can_prop || next_pipeline.blocks(inst) {
+            next_pipeline.decode = Some(inst);
+            return next_pipeline;
+        };
+
+        match work.job {
+            Job::Mem(job) => next_pipeline.mem_execute = Some(((work.cycles, job), inst)),
+            Job::Compute(job) => next_pipeline.alu_execute = Some(((work.cycles, job), inst)),
+            Job::Branch(job) => next_pipeline.jmp_execute = Some(((work.cycles, job), inst)),
+        };
 
         next_pipeline
     }
