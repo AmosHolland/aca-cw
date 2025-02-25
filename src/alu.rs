@@ -5,6 +5,7 @@ pub fn alu_compute(op: ComputeOp, x: i32, y: i32) -> i32 {
         crate::decoder::ComputeOp::Add => x + y,
         crate::decoder::ComputeOp::Sub => x - y,
         crate::decoder::ComputeOp::Mul => x * y,
+        crate::decoder::ComputeOp::Div => x / y,
     }
 }
 

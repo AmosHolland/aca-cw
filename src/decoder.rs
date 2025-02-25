@@ -40,6 +40,7 @@ pub enum ComputeOp {
     Add,
     Sub,
     Mul,
+    Div,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -109,6 +110,12 @@ pub fn decode(instruction: Instruction) -> Work {
             y: operand2,
             dest: register_operand.reg_num,
         }),
+        Instruction::Div(register_operand, operand1, operand2) => Job::Compute(ComputeJob {
+            operation: ComputeOp::Div,
+            x: operand1,
+            y: operand2,
+            dest: register_operand.reg_num,
+        }),
         Instruction::Jump(operand) => Job::Branch(BranchJob {
             operation: None,
             x: None,
@@ -137,8 +144,10 @@ pub fn decode(instruction: Instruction) -> Work {
 
     let cycles = match instruction {
         Instruction::LoadA(_, _) => 4,
-        Instruction::LoadB(_, _, _) => 4,
+        Instruction::LoadB(_, _, _) => 5,
+        Instruction::StoreB(_, _, _) => 2,
         Instruction::Mul(_, _, _) => 2,
+        Instruction::Div(_, _, _) => 12,
         _ => 1,
     };
 

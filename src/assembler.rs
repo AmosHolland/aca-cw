@@ -118,6 +118,11 @@ impl Assembler {
                 self.parse_operand(parts[2]),
                 self.parse_operand(parts[3]),
             )]),
+            ("DIV", 3) => Some(vec![program::Instruction::Div(
+                self.parse_reg(parts[1]),
+                self.parse_operand(parts[2]),
+                self.parse_operand(parts[3]),
+            )]),
             ("JMP", 1) => Some(vec![program::Instruction::Jump(
                 self.parse_operand(parts[1]),
             )]),

@@ -14,6 +14,7 @@ pub enum Instruction {
     Add(RegisterOperand, Operand, Operand),
     Sub(RegisterOperand, Operand, Operand),
     Mul(RegisterOperand, Operand, Operand),
+    Div(RegisterOperand, Operand, Operand),
     Jump(Operand),
     Beq(Operand, Operand, Operand),
     Blt(Operand, Operand, Operand),
@@ -49,6 +50,7 @@ impl Instruction {
             Instruction::Add(_, operand, operand1) => find_reg_operands(vec![*operand, *operand1]),
             Instruction::Sub(_, operand, operand1) => find_reg_operands(vec![*operand, *operand1]),
             Instruction::Mul(_, operand, operand1) => find_reg_operands(vec![*operand, *operand1]),
+            Instruction::Div(_, operand, operand1) => find_reg_operands(vec![*operand, *operand1]),
             Instruction::Jump(operand) => find_reg_operands(vec![*operand]),
             Instruction::Beq(operand, operand1, operand2) => {
                 find_reg_operands(vec![*operand, *operand1, *operand2])
@@ -86,6 +88,7 @@ impl std::fmt::Display for Instruction {
             Instruction::Add(reg_opr, opr, opr1) => write!(f, "ADD {reg_opr} {opr}, {opr1}"),
             Instruction::Sub(reg_opr, opr, opr1) => write!(f, "SUB {reg_opr} {opr}, {opr1}"),
             Instruction::Mul(reg_opr, opr, opr1) => write!(f, "MUL {reg_opr} {opr}, {opr1}"),
+            Instruction::Div(reg_opr, opr, opr1) => write!(f, "DIV {reg_opr} {opr}, {opr1}"),
             Instruction::Jump(opr) => write!(f, "JMP {opr}"),
             Instruction::Beq(opr, opr1, opr2) => write!(f, "BEQ {opr} {opr1} {opr2}"),
             Instruction::Blt(opr, opr1, opr2) => write!(f, "BLT {opr} {opr1} {opr2}"),
