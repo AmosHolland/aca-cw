@@ -10,7 +10,26 @@ mod memory;
 mod program;
 
 const ARF_SIZE: usize = 16;
-const PRF_SIZE: usize = 16;
+
+const BASE_PARAMS: CPUParams = CPUParams {
+    decode_buff_n: 8,
+    alu_n: 1,
+    mem_n: 1,
+    jmp_n: 1,
+    alu_res: 1,
+    mem_res: 1,
+    jmp_res: 1,
+};
+
+struct CPUParams {
+    decode_buff_n: usize,
+    alu_n: usize,
+    mem_n: usize,
+    jmp_n: usize,
+    alu_res: usize,
+    mem_res: usize,
+    jmp_res: usize,
+}
 
 fn main() {
     run_repl();
@@ -55,7 +74,7 @@ fn test_vec_add(debug: bool) {
     let mut assembler = assembler::Assembler::new();
     let program = assembler.assemble("benchmarks/vector_add");
 
-    let mut cpu = cpu::Cpu::new(debug);
+    let mut cpu = cpu::Cpu::new(debug, BASE_PARAMS);
     let test_data = [5; 10];
     cpu.memory.load_array(&test_data, 0);
     cpu.memory.load_array(&test_data, 10);
@@ -71,7 +90,7 @@ fn test_fib(debug: bool) {
     let mut assembler = assembler::Assembler::new();
     let program = assembler.assemble("benchmarks/fibonacci");
 
-    let mut cpu = cpu::Cpu::new(debug);
+    let mut cpu = cpu::Cpu::new(debug, BASE_PARAMS);
     cpu.run(program);
 
     for i in 0..20 {
@@ -83,7 +102,7 @@ fn test_quicksort(debug: bool) {
     let mut assembler = assembler::Assembler::new();
     let program = assembler.assemble("benchmarks/quicksort");
 
-    let mut cpu = cpu::Cpu::new(debug);
+    let mut cpu = cpu::Cpu::new(debug, BASE_PARAMS);
 
     let array_info: [i32; 2] = [1000, 10];
     let mut array: [i32; 10] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];

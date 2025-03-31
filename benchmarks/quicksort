@@ -21,14 +21,17 @@ ADD R6 R2 #1
 .lower-loop
 ADD R5 R5 #1
 LDA R7 R5
+
 BLT _lower-loop R7 R4
 
 .upper-loop
 SUB R6 R6 #1
 LDA R8 R6
+
 BGT _upper-loop R8 R4
 
 .partition-swap
+
 BGT _qs-recurse R5 R6
 BEQ _qs-recurse R5 R6
 STA R8 R5
