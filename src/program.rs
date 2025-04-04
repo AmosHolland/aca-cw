@@ -15,9 +15,16 @@ pub enum Instruction {
     Mul(RegisterOperand, Operand, Operand),
     Div(RegisterOperand, Operand, Operand),
     Jump(Operand),
-    Beq(Operand, Operand, Operand),
-    Blt(Operand, Operand, Operand),
-    Bgt(Operand, Operand, Operand),
+    Beq(ImmediateOperand, Operand, Operand),
+    Blt(ImmediateOperand, Operand, Operand),
+    Bgt(ImmediateOperand, Operand, Operand),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub enum InstructionType {
+    Mem,
+    Alu,
+    Jmp,
 }
 
 impl Instruction {
@@ -51,6 +58,24 @@ impl Instruction {
             Instruction::Mul(_, _, _) => 2,
             Instruction::Div(_, _, _) => 12,
             _ => 1,
+        }
+    }
+
+    pub fn get_type(&self) -> InstructionType {
+        match self {
+            Instruction::LoadA(..) => InstructionType::Mem,
+            Instruction::StoreA(..) => InstructionType::Mem,
+            Instruction::LoadB(..) => InstructionType::Mem,
+            Instruction::StoreB(..) => InstructionType::Mem,
+            Instruction::Move(..) => InstructionType::Alu,
+            Instruction::Add(..) => InstructionType::Alu,
+            Instruction::Sub(..) => InstructionType::Alu,
+            Instruction::Mul(..) => InstructionType::Alu,
+            Instruction::Div(..) => InstructionType::Alu,
+            Instruction::Jump(..) => InstructionType::Jmp,
+            Instruction::Blt(..) => InstructionType::Alu,
+            Instruction::Beq(..) => InstructionType::Alu,
+            Instruction::Bgt(..) => InstructionType::Alu,
         }
     }
 }

@@ -1,0 +1,6 @@
+#V2
+run vector_add
+debug vector_add
+run vector_add
+run fibonacci
+run quicksort

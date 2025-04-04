@@ -1,5 +1,5 @@
 use crate::{
-    cpu::ExecOperand,
+    cpu::{ExecOperand, ROB},
     program::{Instruction, Operand, Value},
 };
 
@@ -8,6 +8,21 @@ pub enum Job {
     Mem(MemJob),
     Compute(ComputeJob),
     Branch(BranchJob),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Destination {
+    Reg(usize),
+    Mem(usize),
+}
+
+impl std::fmt::Display for Destination {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Destination::Reg(r) => write!(f, "R{r}"),
+            Destination::Mem(addr) => write!(f, "Mem[{addr}]"),
+        }
+    }
 }
 
 impl Job {
@@ -21,7 +36,7 @@ impl Job {
         }
     }
 
-    pub fn update_operands(&mut self, station_id: usize, value: ExecOperand) {
+    pub fn update_operands(&mut self, station_id: usize, value: i32) {
         match self {
             Job::Mem(job) => job.update_operands(station_id, value),
             Job::Compute(job) => job.update_operands(station_id, value),
@@ -61,21 +76,29 @@ impl MemJob {
         ready
     }
 
-    fn update_operands(&mut self, station_id: usize, value: ExecOperand) {
+    fn update_operands(&mut self, station_id: usize, value: i32) {
         if let Some(src) = self.src {
             if src.is_ref_to_id(station_id) {
-                self.src = Some(value)
+                self.src = Some(ExecOperand::Value(value))
             }
         }
 
         if self.index.is_ref_to_id(station_id) {
-            self.index = value
+            self.index = ExecOperand::Value(value)
         }
 
         if let Some(base) = self.base {
             if base.is_ref_to_id(station_id) {
-                self.base = Some(value)
+                self.base = Some(ExecOperand::Value(value))
             }
+        }
+    }
+
+    pub fn try_get_destination(&self) -> Option<Destination> {
+        if let Some(r) = self.dst {
+            Some(Destination::Reg(r))
+        } else {
+            None
         }
     }
 }
@@ -118,14 +141,18 @@ pub struct ComputeJob {
 }
 
 impl ComputeJob {
-    fn update_operands(&mut self, station_id: usize, value: ExecOperand) {
+    fn update_operands(&mut self, station_id: usize, value: i32) {
         if self.x.is_ref_to_id(station_id) {
-            self.x = value
+            self.x = ExecOperand::Value(value)
         }
 
         if self.y.is_ref_to_id(station_id) {
-            self.y = value
+            self.y = ExecOperand::Value(value)
         }
+    }
+
+    pub fn get_destination(&self) -> Destination {
+        Destination::Reg(self.dest)
     }
 }
 
@@ -163,12 +190,13 @@ pub struct BranchJob {
     pub operation: Option<CompareOp>,
     pub x: Option<ExecOperand>,
     pub y: Option<ExecOperand>,
-    pub t: ExecOperand,
+    pub t_taken: ExecOperand,
+    pub t_untaken: usize,
 }
 
 impl BranchJob {
     fn is_ready(&self) -> bool {
-        let mut ready = matches!(self.t, ExecOperand::Value(..));
+        let mut ready = matches!(self.t_taken, ExecOperand::Value(..));
         if let Some(x) = self.x {
             ready = ready && matches!(x, ExecOperand::Value(..));
         }
@@ -178,21 +206,21 @@ impl BranchJob {
         ready
     }
 
-    fn update_operands(&mut self, station_id: usize, value: ExecOperand) {
+    fn update_operands(&mut self, station_id: usize, value: i32) {
         if let Some(x) = self.x {
             if x.is_ref_to_id(station_id) {
-                self.x = Some(value)
+                self.x = Some(ExecOperand::Value(value))
             }
         }
 
         if let Some(base) = self.y {
             if base.is_ref_to_id(station_id) {
-                self.y = Some(value)
+                self.y = Some(ExecOperand::Value(value))
             }
         }
 
-        if self.t.is_ref_to_id(station_id) {
-            self.t = value;
+        if self.t_taken.is_ref_to_id(station_id) {
+            self.t_taken = ExecOperand::Value(value);
         }
     }
 }
@@ -208,7 +236,7 @@ impl std::fmt::Display for BranchJob {
             ),
         };
 
-        write!(f, "PC = {0}{condition}", self.t)
+        write!(f, "PC = {0}{condition}", self.t_taken)
     }
 }
 
@@ -229,99 +257,146 @@ impl std::fmt::Display for CompareOp {
     }
 }
 
-pub fn decode(instruction: Instruction, arf: &[ExecOperand]) -> Job {
+pub fn decode(
+    instruction: Instruction,
+    i_addr: usize,
+    arf: &[i32],
+    arf_flags: &[Option<usize>],
+    rob: &ROB,
+) -> Job {
     match instruction {
         Instruction::LoadA(register_operand, operand) => Job::Mem(MemJob {
             operation: MemOp::Load,
             dst: Some(register_operand.reg_num),
             src: None,
-            index: decode_operand(operand, arf),
+            index: decode_operand(operand, arf, arf_flags, rob),
             base: None,
         }),
         Instruction::StoreA(register_operand, operand) => Job::Mem(MemJob {
             operation: MemOp::Store,
             dst: None,
-            src: Some(arf[register_operand.reg_num]),
-            index: decode_operand(operand, arf),
+            src: Some(resolve_arf_query(
+                register_operand.reg_num,
+                arf,
+                arf_flags,
+                rob,
+            )),
+            index: decode_operand(operand, arf, arf_flags, rob),
             base: None,
         }),
         Instruction::LoadB(register_operand, operand1, operand2) => Job::Mem(MemJob {
             operation: MemOp::Load,
             dst: Some(register_operand.reg_num),
             src: None,
-            index: decode_operand(operand1, arf),
-            base: Some(decode_operand(operand2, arf)),
+            index: decode_operand(operand1, arf, arf_flags, rob),
+            base: Some(decode_operand(operand2, arf, arf_flags, rob)),
         }),
         Instruction::StoreB(register_operand, operand1, operand2) => Job::Mem(MemJob {
             operation: MemOp::Store,
             dst: None,
-            src: Some(arf[register_operand.reg_num]),
-            index: decode_operand(operand1, arf),
-            base: Some(decode_operand(operand2, arf)),
+            src: Some(resolve_arf_query(
+                register_operand.reg_num,
+                arf,
+                arf_flags,
+                rob,
+            )),
+            index: decode_operand(operand1, arf, arf_flags, rob),
+            base: Some(decode_operand(operand2, arf, arf_flags, rob)),
         }),
         Instruction::Move(register_operand, operand) => Job::Compute(ComputeJob {
             operation: ComputeOp::Add,
-            x: decode_operand(operand, arf),
+            x: decode_operand(operand, arf, arf_flags, rob),
             y: ExecOperand::Value(0),
             dest: register_operand.reg_num,
         }),
         Instruction::Add(register_operand, operand1, operand2) => Job::Compute(ComputeJob {
             operation: ComputeOp::Add,
-            x: decode_operand(operand1, arf),
-            y: decode_operand(operand2, arf),
+            x: decode_operand(operand1, arf, arf_flags, rob),
+            y: decode_operand(operand2, arf, arf_flags, rob),
             dest: register_operand.reg_num,
         }),
         Instruction::Sub(register_operand, operand1, operand2) => Job::Compute(ComputeJob {
             operation: ComputeOp::Sub,
-            x: decode_operand(operand1, arf),
-            y: decode_operand(operand2, arf),
+            x: decode_operand(operand1, arf, arf_flags, rob),
+            y: decode_operand(operand2, arf, arf_flags, rob),
             dest: register_operand.reg_num,
         }),
         Instruction::Mul(register_operand, operand1, operand2) => Job::Compute(ComputeJob {
             operation: ComputeOp::Mul,
-            x: decode_operand(operand1, arf),
-            y: decode_operand(operand2, arf),
+            x: decode_operand(operand1, arf, arf_flags, rob),
+            y: decode_operand(operand2, arf, arf_flags, rob),
             dest: register_operand.reg_num,
         }),
         Instruction::Div(register_operand, operand1, operand2) => Job::Compute(ComputeJob {
             operation: ComputeOp::Div,
-            x: decode_operand(operand1, arf),
-            y: decode_operand(operand2, arf),
+            x: decode_operand(operand1, arf, arf_flags, rob),
+            y: decode_operand(operand2, arf, arf_flags, rob),
             dest: register_operand.reg_num,
         }),
         Instruction::Jump(operand) => Job::Branch(BranchJob {
             operation: None,
             x: None,
             y: None,
-            t: decode_operand(operand, arf),
+            t_taken: decode_operand(operand, arf, arf_flags, rob),
+            t_untaken: i_addr + 1,
         }),
         Instruction::Beq(operand1, operand2, operand3) => Job::Branch(BranchJob {
             operation: Some(CompareOp::Eq),
-            x: Some(decode_operand(operand2, arf)),
-            y: Some(decode_operand(operand3, arf)),
-            t: decode_operand(operand1, arf),
+            x: Some(decode_operand(operand2, arf, arf_flags, rob)),
+            y: Some(decode_operand(operand3, arf, arf_flags, rob)),
+            t_taken: {
+                let Value::Int(i) = operand1.value;
+                ExecOperand::Value(i)
+            },
+            t_untaken: i_addr + 1,
         }),
         Instruction::Blt(operand1, operand2, operand3) => Job::Branch(BranchJob {
             operation: Some(CompareOp::Lt),
-            x: Some(decode_operand(operand2, arf)),
-            y: Some(decode_operand(operand3, arf)),
-            t: decode_operand(operand1, arf),
+            x: Some(decode_operand(operand2, arf, arf_flags, rob)),
+            y: Some(decode_operand(operand3, arf, arf_flags, rob)),
+            t_taken: {
+                let Value::Int(i) = operand1.value;
+                ExecOperand::Value(i)
+            },
+            t_untaken: i_addr + 1,
         }),
         Instruction::Bgt(operand1, operand2, operand3) => Job::Branch(BranchJob {
             operation: Some(CompareOp::Gt),
-            x: Some(decode_operand(operand2, arf)),
-            y: Some(decode_operand(operand3, arf)),
-            t: decode_operand(operand1, arf),
+            x: Some(decode_operand(operand2, arf, arf_flags, rob)),
+            y: Some(decode_operand(operand3, arf, arf_flags, rob)),
+            t_taken: {
+                let Value::Int(i) = operand1.value;
+                ExecOperand::Value(i)
+            },
+            t_untaken: i_addr + 1,
         }),
     }
 }
 
-fn decode_operand(operand: Operand, arf: &[ExecOperand]) -> ExecOperand {
+fn decode_operand(
+    operand: Operand,
+    arf: &[i32],
+    arf_flags: &[Option<usize>],
+    rob: &ROB,
+) -> ExecOperand {
     match operand {
-        Operand::Reg(reg_opr) => arf[reg_opr.reg_num],
+        Operand::Reg(reg_opr) => resolve_arf_query(reg_opr.reg_num, arf, arf_flags, rob),
         Operand::Imm(imm_opr) => {
             let Value::Int(i) = imm_opr.value;
             ExecOperand::Value(i)
         }
+    }
+}
+
+fn resolve_arf_query(r: usize, arf: &[i32], arf_flags: &[Option<usize>], rob: &ROB) -> ExecOperand {
+    match arf_flags[r] {
+        Some(tag) => {
+            if let Some(value) = rob.get_value(tag) {
+                ExecOperand::Value(value)
+            } else {
+                ExecOperand::Ref(tag)
+            }
+        }
+        None => ExecOperand::Value(arf[r]),
     }
 }

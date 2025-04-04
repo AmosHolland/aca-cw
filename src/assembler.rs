@@ -127,17 +127,17 @@ impl Assembler {
                 self.parse_operand(parts[1]),
             )]),
             ("BEQ", 3) => Some(vec![program::Instruction::Beq(
-                self.parse_operand(parts[1]),
+                self.parse_addr(parts[1]),
                 self.parse_operand(parts[2]),
                 self.parse_operand(parts[3]),
             )]),
             ("BLT", 3) => Some(vec![program::Instruction::Blt(
-                self.parse_operand(parts[1]),
+                self.parse_addr(parts[1]),
                 self.parse_operand(parts[2]),
                 self.parse_operand(parts[3]),
             )]),
             ("BGT", 3) => Some(vec![program::Instruction::Bgt(
-                self.parse_operand(parts[1]),
+                self.parse_addr(parts[1]),
                 self.parse_operand(parts[2]),
                 self.parse_operand(parts[3]),
             )]),
@@ -176,6 +176,14 @@ impl Assembler {
         }
     }
 
+    fn parse_addr(&self, operand: &str) -> program::ImmediateOperand {
+        match &operand[0..1] {
+            "#" => self.parse_imm(&operand[1..]),
+            "_" => self.parse_label(&operand[1..]),
+            _ => panic!("Encountered invalud address operand ({operand}) while parsing code."),
+        }
+    }
+
     fn parse_reg(&self, reg: &str) -> program::RegisterOperand {
         if !reg[0..1].eq("R") {
             panic!("Encountered malformed register while parsing code.")
@@ -193,6 +201,7 @@ impl Assembler {
     }
 
     fn parse_imm(&self, imm: &str) -> program::ImmediateOperand {
+        println!("{imm}");
         let value = program::Value::Int(
             imm.parse::<i32>()
                 .expect("Encountered invalid register number while parsing code."),

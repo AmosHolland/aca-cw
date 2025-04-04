@@ -11,24 +11,49 @@ mod program;
 
 const ARF_SIZE: usize = 16;
 
-const BASE_PARAMS: CPUParams = CPUParams {
-    decode_buff_n: 8,
-    alu_n: 1,
-    mem_n: 1,
-    jmp_n: 1,
-    alu_res: 1,
-    mem_res: 1,
-    jmp_res: 1,
-};
-
+#[derive(Clone)]
 struct CPUParams {
     decode_buff_n: usize,
     alu_n: usize,
     mem_n: usize,
     jmp_n: usize,
-    alu_res: usize,
-    mem_res: usize,
-    jmp_res: usize,
+    res_params: ReservationParams,
+    rob_size: usize,
+}
+
+enum ReservationInfo {
+    Shared(usize),
+    Separate(usize, usize, usize),
+}
+
+#[derive(Clone)]
+struct ReservationParams {
+    n_stations: usize,
+    station_sizes: Vec<usize>,
+    alu_station: usize,
+    mem_station: usize,
+    jmp_station: usize,
+}
+
+impl ReservationParams {
+    fn new(info: ReservationInfo) -> Self {
+        match info {
+            ReservationInfo::Shared(n) => ReservationParams {
+                n_stations: 1,
+                station_sizes: vec![n],
+                alu_station: 0,
+                mem_station: 0,
+                jmp_station: 0,
+            },
+            ReservationInfo::Separate(alu_n, mem_n, jmp_n) => ReservationParams {
+                n_stations: 3,
+                station_sizes: vec![alu_n, mem_n, jmp_n],
+                alu_station: 0,
+                mem_station: 1,
+                jmp_station: 2,
+            },
+        }
+    }
 }
 
 fn main() {
@@ -36,6 +61,15 @@ fn main() {
 }
 
 fn run_repl() {
+    let cpu_params = CPUParams {
+        decode_buff_n: 8,
+        alu_n: 1,
+        mem_n: 1,
+        jmp_n: 1,
+        res_params: ReservationParams::new(ReservationInfo::Separate(1, 1, 1)),
+        rob_size: 6,
+    };
+
     let mut rl = rustyline::DefaultEditor::new().expect("");
     if rl.load_history("repl_history.txt").is_err() {
         println!("No previous history.");
@@ -59,22 +93,23 @@ fn run_repl() {
                 };
 
                 match program {
-                    _ if program == *"vector_add" => test_vec_add(debug),
-                    _ if program == *"fibonacci" => test_fib(debug),
-                    _ if program == *"quicksort" => test_quicksort(debug),
+                    _ if program == *"vector_add" => test_vec_add(debug, cpu_params.clone()),
+                    _ if program == *"fibonacci" => test_fib(debug, cpu_params.clone()),
+                    _ if program == *"quicksort" => test_quicksort(debug, cpu_params.clone()),
                     _ => println!("Unknown program: {program}"),
                 }
             }
             _ => break,
         }
+        let _ = rl.save_history("repl_history.txt");
     }
 }
 
-fn test_vec_add(debug: bool) {
+fn test_vec_add(debug: bool, params: CPUParams) {
     let mut assembler = assembler::Assembler::new();
     let program = assembler.assemble("benchmarks/vector_add");
 
-    let mut cpu = cpu::Cpu::new(debug, BASE_PARAMS);
+    let mut cpu = cpu::Cpu::new(debug, params);
     let test_data = [5; 10];
     cpu.memory.load_array(&test_data, 0);
     cpu.memory.load_array(&test_data, 10);
@@ -86,11 +121,11 @@ fn test_vec_add(debug: bool) {
     }
 }
 
-fn test_fib(debug: bool) {
+fn test_fib(debug: bool, params: CPUParams) {
     let mut assembler = assembler::Assembler::new();
     let program = assembler.assemble("benchmarks/fibonacci");
 
-    let mut cpu = cpu::Cpu::new(debug, BASE_PARAMS);
+    let mut cpu = cpu::Cpu::new(debug, params);
     cpu.run(program);
 
     for i in 0..20 {
@@ -98,11 +133,11 @@ fn test_fib(debug: bool) {
     }
 }
 
-fn test_quicksort(debug: bool) {
+fn test_quicksort(debug: bool, params: CPUParams) {
     let mut assembler = assembler::Assembler::new();
     let program = assembler.assemble("benchmarks/quicksort");
 
-    let mut cpu = cpu::Cpu::new(debug, BASE_PARAMS);
+    let mut cpu = cpu::Cpu::new(debug, params);
 
     let array_info: [i32; 2] = [1000, 10];
     let mut array: [i32; 10] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
