@@ -1,15 +1,14 @@
-use core::{panic, task};
+use core::panic;
 use std::collections::{HashMap, VecDeque};
-use std::mem::{self, take};
 
 use crate::alu::{alu_compare, alu_compute};
 use crate::debug::RuntimeCommand;
 use crate::decoder::{decode, BranchJob, ComputeJob, Destination, Job, MemJob, MemOp};
 use crate::execution_units::ExecutionUnits;
-use crate::memory::{Memory, MEM_SIZE};
+use crate::memory::Memory;
 use crate::program::{Instruction, InstructionType, Program};
 use crate::reservation_station::ReservationStation;
-use crate::rob::{BasicROBEntry, BranchROBEntry, ROBEntry, ROB};
+use crate::rob::{BasicROBEntry, BranchROBEntry, ROBEntry, ReorderBuffer};
 use crate::{debug, CPUParams, ARF_SIZE};
 
 pub type Address = usize;
@@ -34,7 +33,7 @@ struct Pipeline {
     mem_eus: ExecutionUnits,
     jmp_eus: ExecutionUnits,
     write_result: Vec<(usize, i32)>,
-    rob: ROB,
+    rob: ReorderBuffer,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -170,7 +169,7 @@ impl Cpu {
             mem_eus: ExecutionUnits::new(params.mem_n, InstructionType::Mem),
             jmp_eus: ExecutionUnits::new(params.jmp_n, InstructionType::Jmp),
             write_result: Vec::new(),
-            rob: ROB::new(params.rob_size),
+            rob: ReorderBuffer::new(params.rob_size),
         };
 
         Cpu {

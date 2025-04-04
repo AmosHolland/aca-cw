@@ -78,10 +78,6 @@ impl ReservationStation {
         self.stations.len() == self.size
     }
 
-    pub fn id_in_range(&self, id: usize) -> bool {
-        self.stations.contains_key(&id)
-    }
-
     pub fn clear(&mut self) {
         self.stations = HashMap::new();
     }

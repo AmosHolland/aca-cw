@@ -1,7 +1,7 @@
 use crate::{decoder::Destination, program::Instruction};
 
 #[derive(Debug, Clone)]
-pub struct ROB {
+pub struct ReorderBuffer {
     pub entries: Vec<Option<ROBEntry>>,
     head: usize,
     tail: usize,
@@ -9,11 +9,11 @@ pub struct ROB {
     empty: bool,
 }
 
-impl ROB {
+impl ReorderBuffer {
     pub fn new(size: usize) -> Self {
         let entries = vec![None; size];
 
-        ROB {
+        ReorderBuffer {
             entries,
             head: 0,
             tail: 0,
@@ -144,7 +144,7 @@ impl ROBEntry {
         match self {
             ROBEntry::Branch(_) => Err("Cannot update branch entry value.".to_string()),
             ROBEntry::Basic(entry) => {
-                let mut new_entry = entry.clone();
+                let mut new_entry = *entry;
                 new_entry.value = Some(value);
                 new_entry.ready = true;
                 Ok(ROBEntry::Basic(new_entry))
@@ -176,13 +176,13 @@ impl std::fmt::Display for BranchROBEntry {
         let taken = if let Some(bool) = self.taken {
             format!("{bool}")
         } else {
-            format!("None")
+            "None".to_string()
         };
 
         let target = if let Some(pc) = self.real_target {
             format!("{pc}")
         } else {
-            format!("None")
+            "None".to_string()
         };
 
         write!(
@@ -206,13 +206,13 @@ impl std::fmt::Display for BasicROBEntry {
         let destination = if let Some(dest) = self.destination {
             format!("{dest}")
         } else {
-            format!("None")
+            "None".to_string()
         };
 
         let value = if let Some(value) = self.value {
             format!("{value}")
         } else {
-            format!("None")
+            "None".to_string()
         };
 
         write!(

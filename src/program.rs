@@ -40,7 +40,7 @@ impl Instruction {
         }
     }
 
-    pub fn is_branch(&self) -> bool {
+    pub fn _is_branch(&self) -> bool {
         matches!(
             self,
             Instruction::Jump(..)

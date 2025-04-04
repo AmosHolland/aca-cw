@@ -1,7 +1,7 @@
 use crate::{
     cpu::ExecOperand,
     program::{Instruction, Operand, Value},
-    rob::ROB,
+    rob::ReorderBuffer,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -96,11 +96,7 @@ impl MemJob {
     }
 
     pub fn try_get_destination(&self) -> Option<Destination> {
-        if let Some(r) = self.dst {
-            Some(Destination::Reg(r))
-        } else {
-            None
-        }
+        self.dst.map(Destination::Reg)
     }
 }
 
@@ -263,7 +259,7 @@ pub fn decode(
     i_addr: usize,
     arf: &[i32],
     arf_flags: &[Option<usize>],
-    rob: &ROB,
+    rob: &ReorderBuffer,
 ) -> Job {
     match instruction {
         Instruction::LoadA(register_operand, operand) => Job::Mem(MemJob {
@@ -378,7 +374,7 @@ fn decode_operand(
     operand: Operand,
     arf: &[i32],
     arf_flags: &[Option<usize>],
-    rob: &ROB,
+    rob: &ReorderBuffer,
 ) -> ExecOperand {
     match operand {
         Operand::Reg(reg_opr) => resolve_arf_query(reg_opr.reg_num, arf, arf_flags, rob),
@@ -389,7 +385,12 @@ fn decode_operand(
     }
 }
 
-fn resolve_arf_query(r: usize, arf: &[i32], arf_flags: &[Option<usize>], rob: &ROB) -> ExecOperand {
+fn resolve_arf_query(
+    r: usize,
+    arf: &[i32],
+    arf_flags: &[Option<usize>],
+    rob: &ReorderBuffer,
+) -> ExecOperand {
     match arf_flags[r] {
         Some(tag) => {
             if let Some(value) = rob.get_value(tag) {
