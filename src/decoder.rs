@@ -1,6 +1,7 @@
 use crate::{
-    cpu::{ExecOperand, ROB},
+    cpu::ExecOperand,
     program::{Instruction, Operand, Value},
+    rob::ROB,
 };
 
 #[derive(Clone, Copy, Debug)]

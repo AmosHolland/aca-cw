@@ -6,8 +6,11 @@ mod assembler;
 mod cpu;
 mod debug;
 mod decoder;
+mod execution_units;
 mod memory;
 mod program;
+mod reservation_station;
+mod rob;
 
 const ARF_SIZE: usize = 16;
 

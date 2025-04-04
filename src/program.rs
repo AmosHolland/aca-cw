@@ -20,7 +20,7 @@ pub enum Instruction {
     Bgt(ImmediateOperand, Operand, Operand),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum InstructionType {
     Mem,
     Alu,
