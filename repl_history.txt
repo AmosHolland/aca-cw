@@ -4,3 +4,5 @@ debug vector_add
 run vector_add
 run fibonacci
 run quicksort
+run vector_add
+run quicksort

@@ -13,6 +13,10 @@ use crate::{debug, CPUParams, ARF_SIZE};
 
 pub type Address = usize;
 
+// TODO
+// - stop copying pipelines, implement a CPU wide flush?
+// - we could also split some of our cycle execution into different functions
+
 pub struct Cpu {
     arf: [i32; ARF_SIZE],
     arf_flags: [Option<usize>; ARF_SIZE],
@@ -29,9 +33,7 @@ struct Pipeline {
     next_instruction: Option<Address>,
     decode_queue: VecDeque<(usize, Instruction)>,
     res_stations: Vec<ReservationStation>,
-    alu_eus: ExecutionUnits,
-    mem_eus: ExecutionUnits,
-    jmp_eus: ExecutionUnits,
+    eus: Vec<ExecutionUnits>,
     write_result: Vec<(usize, i32)>,
     rob: ReorderBuffer,
 }
@@ -95,9 +97,9 @@ impl Pipeline {
             station.clear();
         }
 
-        self.alu_eus.clear();
-        self.jmp_eus.clear();
-        self.mem_eus.clear();
+        for eu in self.eus.iter_mut() {
+            eu.clear();
+        }
 
         self.rob.clear();
 
@@ -133,13 +135,13 @@ impl std::fmt::Display for Pipeline {
         }
 
         fmt_string = format!("{fmt_string}\n\n\nALU:\n\n");
-        fmt_string = format!("{fmt_string}{0}", self.alu_eus);
+        fmt_string = format!("{fmt_string}{0}", self.eus[0]);
 
         fmt_string = format!("{fmt_string}\n\n\nMemory Unit:\n\n");
-        fmt_string = format!("{fmt_string}{0}", self.mem_eus);
+        fmt_string = format!("{fmt_string}{0}", self.eus[1]);
 
         fmt_string = format!("{fmt_string}\n\n\nBranch Unit:\n\n");
-        fmt_string = format!("{fmt_string}{0}", self.jmp_eus);
+        fmt_string = format!("{fmt_string}{0}", self.eus[2]);
 
         for (rob_id, value) in self.write_result.iter() {
             fmt_string = format!("{fmt_string}ROB[{rob_id}].value = {value} \n")
@@ -156,6 +158,12 @@ impl Cpu {
             res_stations[i] = ReservationStation::new(*size)
         }
 
+        let eus = vec![
+            ExecutionUnits::new(params.alu_n, InstructionType::Alu),
+            ExecutionUnits::new(params.mem_n, InstructionType::Mem),
+            ExecutionUnits::new(params.jmp_n, InstructionType::Jmp),
+        ];
+
         let mut station_map = HashMap::new();
         station_map.insert(InstructionType::Alu, params.res_params.alu_station);
         station_map.insert(InstructionType::Mem, params.res_params.mem_station);
@@ -165,9 +173,7 @@ impl Cpu {
             next_instruction: Some(0),
             decode_queue: VecDeque::new(),
             res_stations,
-            alu_eus: ExecutionUnits::new(params.alu_n, InstructionType::Alu),
-            mem_eus: ExecutionUnits::new(params.mem_n, InstructionType::Mem),
-            jmp_eus: ExecutionUnits::new(params.jmp_n, InstructionType::Jmp),
+            eus,
             write_result: Vec::new(),
             rob: ReorderBuffer::new(params.rob_size),
         };
@@ -247,6 +253,7 @@ impl Cpu {
     }
 
     fn run_cycle(&mut self) -> Pipeline {
+        // Set up temporary state.
         let mut pipeline = self.pipeline.clone();
 
         let mut next_arf = self.arf;
@@ -255,65 +262,63 @@ impl Cpu {
         let mut cdb = Vec::new();
         let mut rob_updates = Vec::new();
 
+        // Write-result (defers to CDB so changes don't take affect until next cycle)
         while let Some((rob_id, result)) = pipeline.write_result.pop() {
             cdb.push((rob_id, result));
-
-            let entry = pipeline.rob.get_entry(rob_id);
-
-            pipeline.res_stations[self.station_map[&entry.get_instruction().get_type()]]
-                .finish_job(rob_id);
         }
 
-        let mut eu_types = [
-            (self.params.res_params.alu_station, &mut pipeline.alu_eus),
-            (self.params.res_params.mem_station, &mut pipeline.mem_eus),
-            (self.params.res_params.jmp_station, &mut pipeline.jmp_eus),
-        ];
+        // Execute - collect any new jobs, resolve any complete jobs
+        // new jobs are stpped in the same cycle to simulate forwarding
+        for eus in &mut pipeline.eus.iter_mut() {
+            let station_id = self.station_map[&eus.get_type()];
+            let station = &mut pipeline.res_stations[station_id];
 
-        for (station_id, eus) in &mut eu_types {
-            let station = &mut pipeline.res_stations[*station_id];
             for _ in 0..eus.n_free_slots() {
-                if let Some(rob_id) = station.get_ready_job(eus.get_type()) {
-                    let slot = station.get_job(rob_id);
-                    eus.add_work(rob_id, slot.inst.n_cycles());
-                    station.start_job(rob_id);
+                if let Some(id) = station.get_ready_job(eus.get_type()) {
+                    let slot = station.get_slot(id);
+                    eus.add_work(id, slot.inst.n_cycles());
+                    station.start_job(id);
                 }
             }
 
             let finished_ids = eus.step_units();
 
             for id in finished_ids {
-                let slot = station.get_job(id);
+                let slot = station.get_slot(id);
+                station.finish_job(id);
+
+                let rob_id = slot.rob_id;
+
                 let wb = match slot.job {
                     Job::Mem(job) => {
-                        let ROBEntry::Basic(entry) = pipeline.rob.get_entry(id) else {
+                        let ROBEntry::Basic(entry) = pipeline.rob.get_entry(rob_id) else {
                             panic!("Mem instruction has non-basic ROB entry.");
                         };
                         let (value, new_entry_opt) = self.handle_mem_job(job, entry);
                         if let Some(new_entry) = new_entry_opt {
-                            rob_updates.push((id, ROBEntry::Basic(new_entry)));
+                            rob_updates.push((rob_id, ROBEntry::Basic(new_entry)));
                         }
                         Some(value)
                     }
                     Job::Compute(job) => Some(self.handle_compute_job(job)),
                     Job::Branch(job) => {
-                        let ROBEntry::Branch(entry) = pipeline.rob.get_entry(id) else {
+                        let ROBEntry::Branch(entry) = pipeline.rob.get_entry(rob_id) else {
                             panic!("Branch instruction has non-branch ROB entry.");
                         };
                         rob_updates
-                            .push((id, ROBEntry::Branch(self.handle_branch_job(job, entry))));
+                            .push((rob_id, ROBEntry::Branch(self.handle_branch_job(job, entry))));
                         None
                     }
                 };
 
                 if let Some(val) = wb {
-                    pipeline.write_result.push((id, val));
-                } else {
-                    station.finish_job(id);
+                    pipeline.write_result.push((rob_id, val));
                 }
             }
         }
 
+        // Decode - if there's room for the next instruction to execute then push it down the pipeline
+        // this involves adding it to reservation stations and the ROB
         if let Some((i_addr, inst)) = pipeline.decode_queue.pop_front() {
             let job = decode(inst, i_addr, &self.arf, &self.arf_flags, &pipeline.rob);
             let job_type = inst.get_type();
@@ -348,6 +353,9 @@ impl Cpu {
             }
         }
 
+        // Fetch - grab the next instruction, push it to decode queue if it can, and increment PC
+        // Currently this is doing assume not taken branch prediction, will need to be modified when we get proper prediction
+        // (as this will be the point where predicitons are made)
         if let Some(addr) = pipeline.next_instruction {
             if pipeline.decode_queue.len() >= self.params.decode_buff_n {
                 pipeline.next_instruction = Some(addr);
@@ -362,6 +370,8 @@ impl Cpu {
             }
         }
 
+        // Commit stage - examine front ROB entry, if it's ready commit it.
+        // Keep going with commits until we encounter an instruction that is not ready.
         loop {
             let Some((entry, id)) = pipeline.rob.peek_front() else {
                 break;

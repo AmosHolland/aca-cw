@@ -126,7 +126,7 @@ impl ROBEntry {
         }
     }
 
-    pub fn get_instruction(&self) -> Instruction {
+    pub fn _get_instruction(&self) -> Instruction {
         match self {
             ROBEntry::Branch(e) => e.instruction,
             ROBEntry::Basic(e) => e.instruction,
