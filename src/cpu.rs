@@ -14,8 +14,8 @@ use crate::{debug, CPUParams, ARF_SIZE};
 pub type Address = usize;
 
 // TODO
-// - stop copying pipelines, implement a CPU wide flush?
-// - we could also split some of our cycle execution into different functions
+// - stop copying pipelines, implement a CPU wide flush? NOT PLANNED
+// - we could also split some of our cycle execution into different functions MAYBE?
 
 pub struct Cpu {
     arf: [i32; ARF_SIZE],
