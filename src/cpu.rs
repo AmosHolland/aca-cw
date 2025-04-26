@@ -7,6 +7,7 @@ use crate::decoder::{decode, BranchJob, ComputeJob, Destination, Job, MemJob, Me
 use crate::execution_units::ExecutionUnits;
 use crate::memory::Memory;
 use crate::prediction::{BranchPredictor, JumpTargetBuffer};
+use crate::profiling::Profiler;
 use crate::program::{Instruction, InstructionType, Program};
 use crate::reservation_station::ReservationStation;
 use crate::rob::{BasicROBEntry, BranchROBEntry, ROBEntry, ReorderBuffer};
@@ -29,6 +30,7 @@ pub struct Cpu {
     branch_predictor: BranchPredictor,
     jmp_predictor: JumpTargetBuffer,
     params: CPUParams,
+    profiler: Profiler,
 }
 
 #[derive(Clone)]
@@ -192,6 +194,7 @@ impl Cpu {
             branch_predictor: params.predictor.clone(),
             jmp_predictor: JumpTargetBuffer::new(params.jmp_buff_size),
             params,
+            profiler: Profiler::new(),
         }
     }
 
@@ -250,11 +253,13 @@ impl Cpu {
                 self.debug_repl();
             }
             self.pipeline = self.run_cycle();
+            self.profiler.inc_cycles();
             cycles += 1;
         }
 
         println!("Program run in {cycles} cycles.");
         self.display_reg_state();
+        self.profiler.report();
     }
 
     fn run_cycle(&mut self) -> Pipeline {
@@ -398,6 +403,8 @@ impl Cpu {
                 break;
             }
 
+            self.profiler.inc_instructions();
+
             match entry {
                 ROBEntry::Branch(entry) => {
                     let target = entry
@@ -415,6 +422,7 @@ impl Cpu {
                     }
 
                     if entry.predicted_target != target {
+                        self.profiler.inc_incorrect_pred();
                         pipeline.clear();
                         next_arf_flags = [None; ARF_SIZE];
                         cdb = Vec::new();
@@ -423,6 +431,7 @@ impl Cpu {
                         self.pc = target;
                         break;
                     } else {
+                        self.profiler.inc_correct_pred();
                         pipeline.rob.pop_front();
                     }
                 }

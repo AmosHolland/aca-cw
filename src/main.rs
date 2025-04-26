@@ -12,6 +12,7 @@ mod decoder;
 mod execution_units;
 mod memory;
 mod prediction;
+mod profiling;
 mod program;
 mod reservation_station;
 mod rob;
