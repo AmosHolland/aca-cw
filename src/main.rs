@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+
 use debug::PreRuntimeCommand;
+use prediction::{BranchPredictor, TwoBitPredictor};
 use rand::seq::SliceRandom;
 
 mod alu;
@@ -8,6 +11,7 @@ mod debug;
 mod decoder;
 mod execution_units;
 mod memory;
+mod prediction;
 mod program;
 mod reservation_station;
 mod rob;
@@ -22,6 +26,8 @@ struct CPUParams {
     jmp_n: usize,
     res_params: ReservationParams,
     rob_size: usize,
+    predictor: BranchPredictor,
+    jmp_buff_size: usize,
 }
 
 enum ReservationInfo {
@@ -71,6 +77,12 @@ fn run_repl() {
         jmp_n: 1,
         res_params: ReservationParams::new(ReservationInfo::Separate(1, 1, 1)),
         rob_size: 6,
+        predictor: BranchPredictor::TwoBit(TwoBitPredictor {
+            static_forward: false,
+            static_backward: false,
+            prediction_buffer: HashMap::new(),
+        }),
+        jmp_buff_size: 8,
     };
 
     let mut rl = rustyline::DefaultEditor::new().expect("");

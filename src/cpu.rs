@@ -6,6 +6,7 @@ use crate::debug::RuntimeCommand;
 use crate::decoder::{decode, BranchJob, ComputeJob, Destination, Job, MemJob, MemOp};
 use crate::execution_units::ExecutionUnits;
 use crate::memory::Memory;
+use crate::prediction::{BranchPredictor, JumpTargetBuffer};
 use crate::program::{Instruction, InstructionType, Program};
 use crate::reservation_station::ReservationStation;
 use crate::rob::{BasicROBEntry, BranchROBEntry, ROBEntry, ReorderBuffer};
@@ -25,13 +26,15 @@ pub struct Cpu {
     debug: bool,
     station_map: HashMap<InstructionType, usize>,
     pipeline: Pipeline,
+    branch_predictor: BranchPredictor,
+    jmp_predictor: JumpTargetBuffer,
     params: CPUParams,
 }
 
 #[derive(Clone)]
 struct Pipeline {
     next_instruction: Option<Address>,
-    decode_queue: VecDeque<(usize, Instruction)>,
+    decode_queue: VecDeque<(usize, Instruction, Option<usize>)>,
     res_stations: Vec<ReservationStation>,
     eus: Vec<ExecutionUnits>,
     write_result: Vec<(usize, i32)>,
@@ -117,7 +120,7 @@ impl std::fmt::Display for Pipeline {
         );
 
         fmt_string = format!("{fmt_string}\n\n\nDecode Queue:\n",);
-        for (addr, inst) in self.decode_queue.iter() {
+        for (addr, inst, b_info) in self.decode_queue.iter() {
             fmt_string = format!("{fmt_string}{addr}: {inst}\n")
         }
 
@@ -186,6 +189,8 @@ impl Cpu {
             debug,
             station_map,
             pipeline,
+            branch_predictor: params.predictor.clone(),
+            jmp_predictor: JumpTargetBuffer::new(params.jmp_buff_size),
             params,
         }
     }
@@ -319,7 +324,7 @@ impl Cpu {
 
         // Decode - if there's room for the next instruction to execute then push it down the pipeline
         // this involves adding it to reservation stations and the ROB
-        if let Some((i_addr, inst)) = pipeline.decode_queue.pop_front() {
+        if let Some((i_addr, inst, b_info)) = pipeline.decode_queue.pop_front() {
             let job = decode(inst, i_addr, &self.arf, &self.arf_flags, &pipeline.rob);
             let job_type = inst.get_type();
             let station = &mut pipeline.res_stations[self.station_map[&job_type]];
@@ -333,13 +338,18 @@ impl Cpu {
                         inst,
                         Some(compute_job.get_destination()),
                     )),
-                    Job::Branch(_) => ROBEntry::Branch(BranchROBEntry {
-                        instruction: inst,
-                        ready: false,
-                        predicted_taken: false,
-                        taken: None,
-                        real_target: None,
-                    }),
+                    Job::Branch(_) => {
+                        let pred_t = b_info.expect("Branch didn't have branch info.");
+
+                        ROBEntry::Branch(BranchROBEntry {
+                            instruction: inst,
+                            branch_pc: i_addr,
+                            ready: false,
+                            predicted_target: pred_t,
+                            taken: None,
+                            real_target: None,
+                        })
+                    }
                 };
 
                 let rob_id = pipeline.rob.push_back(entry);
@@ -349,7 +359,7 @@ impl Cpu {
                     next_arf_flags[r] = Some(rob_id);
                 }
             } else {
-                pipeline.decode_queue.push_front((i_addr, inst));
+                pipeline.decode_queue.push_front((i_addr, inst, b_info));
             }
         }
 
@@ -363,8 +373,15 @@ impl Cpu {
                 pipeline.next_instruction = None;
                 let next_instr = self.memory.fetch(addr);
                 if let Some(instr) = next_instr {
-                    pipeline.decode_queue.push_back((addr, instr));
-                    self.pc += 1;
+                    let pred_t = if instr.is_branch() {
+                        let pred_t = self.predict_branch(addr, instr);
+                        self.pc = pred_t;
+                        Some(pred_t)
+                    } else {
+                        self.pc += 1;
+                        None
+                    };
+                    pipeline.decode_queue.push_back((addr, instr, pred_t));
                     pipeline.next_instruction = Some(self.pc);
                 }
             }
@@ -391,7 +408,13 @@ impl Cpu {
                         .taken
                         .expect("Should know if taken or not to be ready.");
 
-                    if entry.predicted_taken != taken {
+                    if let Instruction::Jump(..) = entry.instruction {
+                        self.jmp_predictor.update(entry.branch_pc, target);
+                    } else {
+                        self.branch_predictor.update(entry.branch_pc, taken);
+                    }
+
+                    if entry.predicted_target != target {
                         pipeline.clear();
                         next_arf_flags = [None; ARF_SIZE];
                         cdb = Vec::new();
@@ -442,6 +465,19 @@ impl Cpu {
         self.arf = next_arf;
         self.arf_flags = next_arf_flags;
         pipeline
+    }
+
+    fn predict_branch(&self, pc: usize, inst: Instruction) -> usize {
+        match inst {
+            Instruction::Jump(op) => match op {
+                crate::program::Operand::Reg(_) => self.jmp_predictor.predict(pc),
+                crate::program::Operand::Imm(t) => t.value.as_usize(),
+            },
+            Instruction::Beq(t, ..) => self.branch_predictor.predict(pc, t.value.as_usize()),
+            Instruction::Blt(t, ..) => self.branch_predictor.predict(pc, t.value.as_usize()),
+            Instruction::Bgt(t, ..) => self.branch_predictor.predict(pc, t.value.as_usize()),
+            _ => panic!("Tried to predict non-branch instruction"),
+        }
     }
 
     fn handle_compute_job(&self, job: ComputeJob) -> i32 {

@@ -165,8 +165,9 @@ impl std::fmt::Display for ROBEntry {
 #[derive(Debug, Clone, Copy)]
 pub struct BranchROBEntry {
     pub instruction: Instruction,
+    pub branch_pc: usize,
     pub ready: bool,
-    pub predicted_taken: bool,
+    pub predicted_target: usize,
     pub taken: Option<bool>,
     pub real_target: Option<usize>,
 }
@@ -187,8 +188,8 @@ impl std::fmt::Display for BranchROBEntry {
 
         write!(
             f,
-            "inst: {0}, ready: {1}, predicted taken: {2}, taken: {taken}, real target: {target}",
-            self.instruction, self.ready, self.predicted_taken
+            "inst: {0}, ready: {1}, predicted target: {2}, taken: {taken}, real target: {target}",
+            self.instruction, self.ready, self.predicted_target
         )
     }
 }

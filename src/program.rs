@@ -40,7 +40,7 @@ impl Instruction {
         }
     }
 
-    pub fn _is_branch(&self) -> bool {
+    pub fn is_branch(&self) -> bool {
         matches!(
             self,
             Instruction::Jump(..)
@@ -73,9 +73,9 @@ impl Instruction {
             Instruction::Mul(..) => InstructionType::Alu,
             Instruction::Div(..) => InstructionType::Alu,
             Instruction::Jump(..) => InstructionType::Jmp,
-            Instruction::Blt(..) => InstructionType::Alu,
-            Instruction::Beq(..) => InstructionType::Alu,
-            Instruction::Bgt(..) => InstructionType::Alu,
+            Instruction::Blt(..) => InstructionType::Jmp,
+            Instruction::Beq(..) => InstructionType::Jmp,
+            Instruction::Bgt(..) => InstructionType::Jmp,
         }
     }
 }
@@ -110,6 +110,14 @@ impl std::fmt::Display for Value {
         match self {
             Value::Int(i) => write!(f, "{i}"),
         }
+    }
+}
+
+impl Value {
+    pub fn as_usize(&self) -> usize {
+        let Value::Int(i) = self;
+        (*i).try_into()
+            .expect("Tried to convert incopatible value into usize.")
     }
 }
 
