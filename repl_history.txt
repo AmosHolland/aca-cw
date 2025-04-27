@@ -11,3 +11,17 @@ run quicksort
 run vector_add
 run fibonacci
 run quicksort
+run gcd
+run factorial
+run fibonacci
+run factorial
+run fibonacci
+run gcd
+run quicksort
+run vec_add
+run vector_add
+test 5
+test 100
+run gcd
+test 100
+run quicksort

@@ -139,13 +139,13 @@ impl std::fmt::Display for Pipeline {
             fmt_string = format!("{fmt_string}{station}\n")
         }
 
-        fmt_string = format!("{fmt_string}\n\n\nALU:\n\n");
+        fmt_string = format!("{fmt_string}\n\nALU:\n\n");
         fmt_string = format!("{fmt_string}{0}", self.eus[0]);
 
-        fmt_string = format!("{fmt_string}\n\n\nMemory Unit:\n\n");
+        fmt_string = format!("{fmt_string}\n\nMemory Unit:\n");
         fmt_string = format!("{fmt_string}{0}", self.eus[1]);
 
-        fmt_string = format!("{fmt_string}\n\n\nBranch Unit:\n\n");
+        fmt_string = format!("{fmt_string}\n\nBranch Unit:\n");
         fmt_string = format!("{fmt_string}{0}", self.eus[2]);
 
         for (rob_id, value) in self.write_result.iter() {
@@ -234,11 +234,13 @@ impl Cpu {
             RuntimeCommand::ShowMemory((n1, n2)) => self.display_memory(n1, n2),
             RuntimeCommand::ShowPipeline => println!("Current pipeline: \n{0}", self.pipeline),
             RuntimeCommand::ShowPC => println!("PC : {0}", self.pc),
+            RuntimeCommand::ShowBranchPredictor => println!("{0}", self.branch_predictor),
+            RuntimeCommand::ShowReturnCache => println!("{0}", self.jmp_predictor),
             _ => (),
         }
     }
 
-    pub fn run(&mut self, program: Program) {
+    pub fn run(&mut self, program: Program, quiet: bool) -> Profiler {
         self.arf = [0; ARF_SIZE];
 
         self.memory.load_program(program);
@@ -257,9 +259,12 @@ impl Cpu {
             cycles += 1;
         }
 
-        println!("Program run in {cycles} cycles.");
-        self.display_reg_state();
-        self.profiler.report();
+        if !(quiet) {
+            println!("Program run in {cycles} cycles.");
+            self.display_reg_state();
+            self.profiler.report();
+        }
+        self.profiler.clone()
     }
 
     fn run_cycle(&mut self) -> Pipeline {
@@ -422,7 +427,9 @@ impl Cpu {
                     }
 
                     if entry.predicted_target != target {
-                        self.profiler.inc_incorrect_pred();
+                        if !matches!(entry.instruction, Instruction::Jump(_)) {
+                            self.profiler.inc_incorrect_pred();
+                        }
                         pipeline.clear();
                         next_arf_flags = [None; ARF_SIZE];
                         cdb = Vec::new();
@@ -431,7 +438,9 @@ impl Cpu {
                         self.pc = target;
                         break;
                     } else {
-                        self.profiler.inc_correct_pred();
+                        if !matches!(entry.instruction, Instruction::Jump(_)) {
+                            self.profiler.inc_correct_pred();
+                        }
                         pipeline.rob.pop_front();
                     }
                 }

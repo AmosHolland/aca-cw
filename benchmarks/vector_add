@@ -1,8 +1,8 @@
 MV R0 #0
 MV R1 #10
-MV R2 #20
+MV R2 #110
 
-MV R3 #10
+MV R3 #100
 MV R4 #0
 
 .loop

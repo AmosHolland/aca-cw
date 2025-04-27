@@ -61,7 +61,7 @@ impl ExecutionUnits {
 
 impl std::fmt::Display for ExecutionUnits {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut fmt_string = "Execution Units:".to_string();
+        let mut fmt_string = "".to_string();
         for (i, opt) in self.units.iter().enumerate() {
             let str_body = match opt {
                 Some((id, cycles)) => {

@@ -201,7 +201,6 @@ impl Assembler {
     }
 
     fn parse_imm(&self, imm: &str) -> program::ImmediateOperand {
-        println!("{imm}");
         let value = program::Value::Int(
             imm.parse::<i32>()
                 .expect("Encountered invalid register number while parsing code."),

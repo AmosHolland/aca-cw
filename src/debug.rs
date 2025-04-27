@@ -8,12 +8,15 @@ pub enum RuntimeCommand {
     ShowMemory((usize, usize)),
     ShowPipeline,
     ShowPC,
+    ShowBranchPredictor,
+    ShowReturnCache,
     Nop,
 }
 
 pub enum PreRuntimeCommand {
     Run(String),
     Debug(String),
+    Test(usize),
 }
 
 pub fn parse_runtime_command_string(line: String) -> Result<RuntimeCommand, String> {
@@ -50,6 +53,8 @@ pub fn parse_runtime_command_string(line: String) -> Result<RuntimeCommand, Stri
         }
         ("pl", 1) => Ok(RuntimeCommand::ShowPipeline),
         ("pc", 1) => Ok(RuntimeCommand::ShowPC),
+        ("b", 1) => Ok(RuntimeCommand::ShowBranchPredictor),
+        ("j", 1) => Ok(RuntimeCommand::ShowReturnCache),
         ("", 1) => Ok(RuntimeCommand::Nop),
         _ => Err("Invalid command.".to_string()),
     }
@@ -63,6 +68,10 @@ pub fn parse_pre_runtime_command_string(line: String) -> Result<PreRuntimeComman
     match (op, n_parts) {
         ("run", 2) => Ok(PreRuntimeCommand::Run(parts[1].to_string())),
         ("debug", 2) => Ok(PreRuntimeCommand::Debug(parts[1].to_string())),
+        ("test", 2) => match parts[1].to_string().parse::<usize>() {
+            Ok(n) => Ok(PreRuntimeCommand::Test(n)),
+            Err(e) => Err(e.to_string()),
+        },
         _ => Err("Invalid Command".to_string()),
     }
 }

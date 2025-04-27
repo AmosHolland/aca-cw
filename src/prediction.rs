@@ -37,6 +37,16 @@ impl BranchPredictor {
     }
 }
 
+impl std::fmt::Display for BranchPredictor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BranchPredictor::OneBit(pred) => write!(f, "{pred}"),
+            BranchPredictor::TwoBit(pred) => write!(f, "{pred}"),
+            _ => write!(f, "Static Predictor."),
+        }
+    }
+}
+
 fn static_predict(pc: usize, target: usize, forward_taken: bool, backward_taken: bool) -> bool {
     (pc < target && forward_taken) || (pc > target && backward_taken)
 }
@@ -62,7 +72,17 @@ impl OneBitPredictor {
     }
 }
 
-#[derive(Clone, Copy)]
+impl std::fmt::Display for OneBitPredictor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut fmt_str = "".to_string();
+        for (k, v) in self.prediction_buffer.iter() {
+            fmt_str = format!("{fmt_str}\n {k} : {v}")
+        }
+        write!(f, "{fmt_str}")
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 pub enum TwoBitState {
     StronglyTaken,
     WeaklyTaken,
@@ -128,6 +148,16 @@ impl TwoBitPredictor {
     }
 }
 
+impl std::fmt::Display for TwoBitPredictor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut fmt_str = "".to_string();
+        for (k, v) in self.prediction_buffer.iter() {
+            fmt_str = format!("{fmt_str}\n {k} : {v:?}")
+        }
+        write!(f, "{fmt_str}")
+    }
+}
+
 pub struct JumpTargetBuffer {
     size: usize,
     buffer: Vec<usize>,
@@ -147,5 +177,15 @@ impl JumpTargetBuffer {
 
     pub fn update(&mut self, pc: usize, target: usize) {
         self.buffer[pc % self.size] = target
+    }
+}
+
+impl std::fmt::Display for JumpTargetBuffer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut fmt_str = "".to_string();
+        for (i, v) in self.buffer.iter().enumerate() {
+            fmt_str = format!("{fmt_str}\n {i} : {v}")
+        }
+        write!(f, "{fmt_str}")
     }
 }

@@ -1,3 +1,4 @@
+#[derive(Clone)]
 pub struct Profiler {
     cycles: usize,
     instructions_executed: usize,
@@ -29,6 +30,15 @@ impl Profiler {
 
     pub fn inc_incorrect_pred(&mut self) {
         self.incorrect_predictions += 1;
+    }
+
+    pub fn get_icp(&self) -> f32 {
+        self.instructions_executed as f32 / self.cycles as f32
+    }
+
+    pub fn get_bpr(&self) -> f32 {
+        (self.correct_predictions as f32)
+            / ((self.correct_predictions + self.incorrect_predictions) as f32)
     }
 
     pub fn report(&self) {

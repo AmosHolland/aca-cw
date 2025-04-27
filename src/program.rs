@@ -36,6 +36,7 @@ impl Instruction {
             Instruction::Add(reg_opr, _, _) => Some(reg_opr.reg_num),
             Instruction::Sub(reg_opr, _, _) => Some(reg_opr.reg_num),
             Instruction::Mul(reg_opr, _, _) => Some(reg_opr.reg_num),
+            Instruction::Div(reg_opr, _, _) => Some(reg_opr.reg_num),
             _ => None,
         }
     }
